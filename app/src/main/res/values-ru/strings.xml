@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-FileCopyrightText: 2026 The Viber <theviber707@proton.me>
+  ~
+  ~ SPDX-License-Identifier: GPL-3.0-or-later
+  -->
+<resources>
+    <!-- Navigation & Tabs -->
+    <string name="nav_youtube_music">YouTube Music</string>
+    <string name="nav_local_audio">Локальное аудио</string>
+    <string name="nav_listenbrainz">ListenBrainz</string>
+    <string name="cd_scrobble_queue">Очередь скробблинга ListenBrainz</string>
+    <string name="cd_change_language">Изменить язык</string>
+    <string name="badge_scrobbled">Заскробблено</string>
+
+    <!-- YouTube Music Search Tab -->
+    <string name="search_ytm_placeholder">Поиск песен, исполнителей и альбомов в YouTube Music…</string>
+    <string name="action_search">Найти</string>
+    <string name="cd_clear_search">Очистить поиск</string>
+    <string name="empty_search_prompt">Ищите в YouTube Music для воспроизведения и скробблинга треков</string>
+    <string name="action_load_more">Загрузить ещё</string>
+    <string name="cd_add_to_queue">Добавить в очередь</string>
+
+    <!-- Local Audio Library Tab -->
+    <string name="filter_local_placeholder">Фильтр локальных аудиофайлов…</string>
+    <string name="cd_refresh_local_library">Обновить локальную фонотеку</string>
+    <string name="empty_local_library">На устройстве не найдено локальных аудиотреков</string>
+    <string name="unknown_artist">Неизвестный исполнитель</string>
+
+    <!-- Now Playing Sheet & Mini Player -->
+    <string name="cd_collapse_player">Свернуть плеер</string>
+    <string name="mode_audio_art">Обложка</string>
+    <string name="mode_video_surface">Видео</string>
+    <string name="video_surface_ready">Видеоповерхность готова для «%1$s»</string>
+    <string name="lb_scrobbling_paused">Скробблинг ListenBrainz приостановлен</string>
+    <string name="lb_status_scrobbled">Отправлено в ListenBrainz</string>
+    <string name="lb_status_playing_now_active">ListenBrainz: статус «Сейчас играет» активен</string>
+    <string name="lb_status_playing_now_queued">ListenBrainz: «Сейчас играет» в офлайн-очереди</string>
+    <string name="lb_status_track_too_short">Трек &lt; 30 с (не скробблится)</string>
+    <string name="lb_status_tracking_duration">ListenBrainz: отслеживание времени прослушивания</string>
+    <string name="scrobble_at_time">Скроббл на %1$s</string>
+    <string name="cd_toggle_shuffle">Переключить случайный порядок</string>
+    <string name="cd_previous_track">Предыдущий трек</string>
+    <string name="cd_play">Воспроизвести</string>
+    <string name="cd_pause">Пауза</string>
+    <string name="cd_next_track">Следующий трек</string>
+    <string name="cd_cycle_repeat">Изменить режим повтора</string>
+    <string name="playback_speed_format">Скорость %1$.2fx</string>
+    <string name="up_next_count">Далее (%1$d)</string>
+
+    <!-- Scrobble Queue & ListenBrainz Configuration Screen -->
+    <string name="lb_scrobbler_title">Скробблер ListenBrainz</string>
+    <string name="lb_scrobbler_subtitle_active">Активен • Порог 50%% или 4:00</string>
+    <string name="lb_scrobbler_subtitle_disabled">Скробблинг отключён</string>
+    <string name="lb_current_session_format">Текущая сессия: %1$s — %2$s</string>
+    <string name="lb_playing_now_sent">playing_now: отправлено</string>
+    <string name="lb_playing_now_pending">playing_now: ожидает/в очереди</string>
+    <string name="lb_completed_listen_recorded">Прослушивание засчитано</string>
+    <string name="lb_ineligible_short">Недоступно (&lt; 30 с)</string>
+    <string name="lb_no_active_session">Нет активной сессии воспроизведения</string>
+    <string name="lb_api_quota_format">Квота API: осталось %1$d из %2$d</string>
+    <string name="lb_api_quota_ready">Квота API: доступна</string>
+    <string name="lb_rate_limit_reset_format">X-RateLimit-Reset-In: %1$d с</string>
+    <string name="action_flush_queue_format">Отправить очередь (%1$d)</string>
+    <string name="lb_token_card_title">Пользовательский токен ListenBrainz</string>
+    <string name="lb_token_verified_user_format">Токен подтверждён для @%1$s (%2$s)</string>
+    <string name="lb_token_verified_simple">Токен подтверждён</string>
+    <string name="lb_token_invalid_warning">Не удалось проверить токен. Пожалуйста, проверьте ваш токен пользователя ListenBrainz.</string>
+    <string name="lb_token_input_label">Токен пользователя (с listenbrainz.org/settings)</string>
+    <string name="cd_show_token">Показать токен</string>
+    <string name="cd_hide_token">Скрыть токен</string>
+    <string name="action_validate_save_token">Проверить и сохранить токен</string>
+    <string name="lb_queued_playing_now_header">В офлайн-очереди: Сейчас играет</string>
+    <string name="lb_pending_scrobbles_header_format">Ожидающие офлайн-скробблы (%1$d)</string>
+    <string name="lb_pending_scrobbles_subtitle">Сохранено в Room • Отправка через single/import при подключении к сети</string>
+    <string name="action_clear_all">Очистить всё</string>
+    <string name="lb_playing_now_expires_format">playing_now • Истекает %1$s</string>
+    <string name="lb_listened_at_attempts_format">Прослушано %1$s • Попыток: %2$d</string>
+    <string name="lb_last_status_format">Последний статус: %1$s</string>
+    <string name="cd_remove_queued_scrobble">Удалить скроббл из очереди</string>
+    <string name="lb_empty_queue_title">Все скробблы синхронизированы</string>
+    <string name="lb_empty_queue_body">Треки, прослушанные офлайн или во время окна ограничения скорости HTTP 429, будут автоматически добавлены сюда.</string>
+
+    <!-- Status & DomainError Messages -->
+    <string name="status_added_to_queue_format">«%1$s» добавлено в очередь</string>
+    <string name="status_connected_as_format">Подключено к ListenBrainz как %1$s</string>
+    <string name="status_scrobbling_enabled">Скробблинг ListenBrainz включён</string>
+    <string name="status_scrobbling_paused">Скробблинг ListenBrainz приостановлен</string>
+    <string name="status_flushed_count_format">Отправлено %1$d прослушиваний из очереди в ListenBrainz</string>
+    <string name="status_queue_up_to_date">Очередь скробблинга актуальна</string>
+    <string name="status_queue_cleared">Офлайн-очередь скробблинга очищена</string>
+    <string name="cd_dismiss">Закрыть</string>
+
+    <string name="error_network_offline">Нет подключения к сети</string>
+    <string name="error_network_timeout">Превышено время ожидания сети</string>
+    <string name="error_network_rate_limited_format">Превышен лимит запросов ListenBrainz; сброс через %1$d с</string>
+    <string name="error_network_unauthorized">Недействительный или неавторизованный токен ListenBrainz</string>
+    <string name="error_network_bad_request">Сервер ListenBrainz отклонил некорректный запрос</string>
+    <string name="error_network_server_format">Ошибка сервера ListenBrainz (HTTP %1$d)</string>
+    <string name="error_validation_missing_token">Токен пользователя ListenBrainz не настроен</string>
+    <string name="error_playback_unplayable_format">Видео «%1$s» недоступно для воспроизведения (%2$s)</string>
+    <string name="error_playback_no_audio_format">Не найден совместимый аудиопоток для «%1$s»</string>
+    <string name="error_playback_cipher_format">Ошибка расшифровки подписи: %1$s</string>
+    <string name="error_playback_permission_format">Отсутствует необходимое разрешение на доступ к медиафайлам: %1$s</string>
+</resources>

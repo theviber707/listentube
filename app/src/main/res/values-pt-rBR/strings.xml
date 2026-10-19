@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-FileCopyrightText: 2026 The Viber <theviber707@proton.me>
+  ~
+  ~ SPDX-License-Identifier: GPL-3.0-or-later
+  -->
+<resources>
+    <!-- Navigation & Tabs -->
+    <string name="nav_youtube_music">YouTube Music</string>
+    <string name="nav_local_audio">Áudio Local</string>
+    <string name="nav_listenbrainz">ListenBrainz</string>
+    <string name="cd_scrobble_queue">Fila de Scrobbles do ListenBrainz</string>
+    <string name="cd_change_language">Alterar Idioma</string>
+    <string name="badge_scrobbled">Scrobblado</string>
+
+    <!-- YouTube Music Search Tab -->
+    <string name="search_ytm_placeholder">Pesquisar músicas, artistas e álbuns no YouTube Music…</string>
+    <string name="action_search">Pesquisar</string>
+    <string name="cd_clear_search">Limpar pesquisa</string>
+    <string name="empty_search_prompt">Pesquise no YouTube Music para reproduzir e fazer scrobble de faixas</string>
+    <string name="action_load_more">Carregar Mais</string>
+    <string name="cd_add_to_queue">Adicionar à fila</string>
+
+    <!-- Local Audio Library Tab -->
+    <string name="filter_local_placeholder">Filtrar arquivos de áudio locais…</string>
+    <string name="cd_refresh_local_library">Atualizar biblioteca de áudio local</string>
+    <string name="empty_local_library">Nenhuma faixa de áudio local encontrada no dispositivo</string>
+    <string name="unknown_artist">Artista Desconhecido</string>
+
+    <!-- Now Playing Sheet & Mini Player -->
+    <string name="cd_collapse_player">Recolher reprodutor</string>
+    <string name="mode_audio_art">Capa do Álbum</string>
+    <string name="mode_video_surface">Superfície de Vídeo</string>
+    <string name="video_surface_ready">Superfície de vídeo pronta para \"%1$s\"</string>
+    <string name="lb_scrobbling_paused">Scrobbling do ListenBrainz pausado</string>
+    <string name="lb_status_scrobbled">Scrobble enviado ao ListenBrainz</string>
+    <string name="lb_status_playing_now_active">ListenBrainz: Tocando Agora ativo</string>
+    <string name="lb_status_playing_now_queued">ListenBrainz: Tocando Agora na fila offline</string>
+    <string name="lb_status_track_too_short">Faixa &lt; 30s (não elegível para scrobble)</string>
+    <string name="lb_status_tracking_duration">ListenBrainz: Monitorando tempo de reprodução</string>
+    <string name="scrobble_at_time">Scrobble em %1$s</string>
+    <string name="cd_toggle_shuffle">Alternar modo aleatório</string>
+    <string name="cd_previous_track">Faixa anterior</string>
+    <string name="cd_play">Reproduzir</string>
+    <string name="cd_pause">Pausar</string>
+    <string name="cd_next_track">Próxima faixa</string>
+    <string name="cd_cycle_repeat">Alternar modo de repetição</string>
+    <string name="playback_speed_format">Velocidade %1$.2fx</string>
+    <string name="up_next_count">A Seguir (%1$d)</string>
+
+    <!-- Scrobble Queue & ListenBrainz Configuration Screen -->
+    <string name="lb_scrobbler_title">Scrobbler do ListenBrainz</string>
+    <string name="lb_scrobbler_subtitle_active">Ativo • Limite de 50%% ou 4:00</string>
+    <string name="lb_scrobbler_subtitle_disabled">Scrobbling desativado</string>
+    <string name="lb_current_session_format">Sessão Atual: %1$s — %2$s</string>
+    <string name="lb_playing_now_sent">playing_now: Enviado</string>
+    <string name="lb_playing_now_pending">playing_now: Pendente/Na fila</string>
+    <string name="lb_completed_listen_recorded">Reprodução Concluída Registrada</string>
+    <string name="lb_ineligible_short">Inelegível (&lt; 30s)</string>
+    <string name="lb_no_active_session">Nenhuma sessão de reprodução ativa</string>
+    <string name="lb_api_quota_format">Cota da API: %1$d / %2$d restantes</string>
+    <string name="lb_api_quota_ready">Cota da API: Pronta</string>
+    <string name="lb_rate_limit_reset_format">X-RateLimit-Reset-In: %1$ds</string>
+    <string name="action_flush_queue_format">Enviar Fila (%1$d)</string>
+    <string name="lb_token_card_title">Token de Usuário do ListenBrainz</string>
+    <string name="lb_token_verified_user_format">Token verificado como @%1$s (%2$s)</string>
+    <string name="lb_token_verified_simple">Token verificado</string>
+    <string name="lb_token_invalid_warning">Falha na validação do token. Verifique seu token de usuário do ListenBrainz.</string>
+    <string name="lb_token_input_label">Token de Usuário (de listenbrainz.org/settings)</string>
+    <string name="cd_show_token">Mostrar token</string>
+    <string name="cd_hide_token">Ocultar token</string>
+    <string name="action_validate_save_token">Validar e Salvar Token</string>
+    <string name="lb_queued_playing_now_header">Na Fila Offline: Tocando Agora</string>
+    <string name="lb_pending_scrobbles_header_format">Scrobbles Offline Pendentes (%1$d)</string>
+    <string name="lb_pending_scrobbles_subtitle">Salvos no Room • Enviados via single/import quando online</string>
+    <string name="action_clear_all">Limpar Tudo</string>
+    <string name="lb_playing_now_expires_format">playing_now • Expira em %1$s</string>
+    <string name="lb_listened_at_attempts_format">Ouvido em %1$s • Tentativas: %2$d</string>
+    <string name="lb_last_status_format">Último status: %1$s</string>
+    <string name="cd_remove_queued_scrobble">Remover scrobble da fila</string>
+    <string name="lb_empty_queue_title">Todos os Scrobbles Sincronizados</string>
+    <string name="lb_empty_queue_body">As faixas reproduzidas enquanto estiver offline ou durante uma janela de limite HTTP 429 serão colocadas na fila automaticamente.</string>
+
+    <!-- Status & DomainError Messages -->
+    <string name="status_added_to_queue_format">\"%1$s\" adicionada à fila</string>
+    <string name="status_connected_as_format">Conectado ao ListenBrainz como %1$s</string>
+    <string name="status_scrobbling_enabled">Scrobbling do ListenBrainz ativado</string>
+    <string name="status_scrobbling_paused">Scrobbling do ListenBrainz pausado</string>
+    <string name="status_flushed_count_format">%1$d reprodução(ões) da fila enviada(s) ao ListenBrainz</string>
+    <string name="status_queue_up_to_date">A fila de scrobbles está atualizada</string>
+    <string name="status_queue_cleared">Fila de scrobbles offline limpa</string>
+    <string name="cd_dismiss">Dispensar</string>
+
+    <string name="error_network_offline">Sem conexão de rede disponível</string>
+    <string name="error_network_timeout">A requisição de rede expirou</string>
+    <string name="error_network_rate_limited_format">Limite de requisições do ListenBrainz atingido; reinício em %1$ds</string>
+    <string name="error_network_unauthorized">Token de usuário do ListenBrainz inválido ou não autorizado</string>
+    <string name="error_network_bad_request">O ListenBrainz rejeitou os dados de envio malformados</string>
+    <string name="error_network_server_format">Erro no servidor do ListenBrainz (HTTP %1$d)</string>
+    <string name="error_validation_missing_token">O token de usuário do ListenBrainz não está configurado</string>
+    <string name="error_playback_unplayable_format">O vídeo \"%1$s\" não pode ser reproduzido (%2$s)</string>
+    <string name="error_playback_no_audio_format">Nenhum fluxo de áudio compatível encontrado para \"%1$s\"</string>
+    <string name="error_playback_cipher_format">Falha na descriptografia da cifra: %1$s</string>
+    <string name="error_playback_permission_format">Permissão de mídia necessária ausente: %1$s</string>
+</resources>

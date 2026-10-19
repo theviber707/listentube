@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-FileCopyrightText: 2026 The Viber <theviber707@proton.me>
+  ~
+  ~ SPDX-License-Identifier: GPL-3.0-or-later
+  -->
+<resources>
+    <!-- Navigation & Tabs -->
+    <string name="nav_youtube_music">YouTube Music</string>
+    <string name="nav_local_audio">Local Audio</string>
+    <string name="nav_listenbrainz">ListenBrainz</string>
+    <string name="cd_scrobble_queue">ListenBrainz Scrobble Queue</string>
+    <string name="cd_change_language">Change Language</string>
+    <string name="badge_scrobbled">Scrobbled</string>
+
+    <!-- YouTube Music Search Tab -->
+    <string name="search_ytm_placeholder">Search YouTube Music songs, artists, albums…</string>
+    <string name="action_search">Search</string>
+    <string name="cd_clear_search">Clear search</string>
+    <string name="empty_search_prompt">Search YouTube Music to stream and scrobble tracks</string>
+    <string name="action_load_more">Load More</string>
+    <string name="cd_add_to_queue">Add to queue</string>
+
+    <!-- Local Audio Library Tab -->
+    <string name="filter_local_placeholder">Filter local audio files…</string>
+    <string name="cd_refresh_local_library">Refresh local audio library</string>
+    <string name="empty_local_library">No local audio tracks found on device</string>
+    <string name="unknown_artist">Unknown Artist</string>
+
+    <!-- Now Playing Sheet & Mini Player -->
+    <string name="cd_collapse_player">Collapse player</string>
+    <string name="mode_audio_art">Audio Art</string>
+    <string name="mode_video_surface">Video Surface</string>
+    <string name="video_surface_ready">Video surface ready for \"%1$s\"</string>
+    <string name="lb_scrobbling_paused">ListenBrainz scrobbling paused</string>
+    <string name="lb_status_scrobbled">Scrobbled to ListenBrainz</string>
+    <string name="lb_status_playing_now_active">ListenBrainz: Playing Now active</string>
+    <string name="lb_status_playing_now_queued">ListenBrainz: Playing Now queued offline</string>
+    <string name="lb_status_track_too_short">Track &lt; 30s (not scrobbleable)</string>
+    <string name="lb_status_tracking_duration">ListenBrainz: Tracking listen duration</string>
+    <string name="scrobble_at_time">Scrobble @ %1$s</string>
+    <string name="cd_toggle_shuffle">Toggle shuffle</string>
+    <string name="cd_previous_track">Previous track</string>
+    <string name="cd_play">Play</string>
+    <string name="cd_pause">Pause</string>
+    <string name="cd_next_track">Next track</string>
+    <string name="cd_cycle_repeat">Cycle repeat mode</string>
+    <string name="playback_speed_format">%1$.2fx Speed</string>
+    <string name="up_next_count">Up Next (%1$d)</string>
+
+    <!-- Scrobble Queue & ListenBrainz Configuration Screen -->
+    <string name="lb_scrobbler_title">ListenBrainz Scrobbler</string>
+    <string name="lb_scrobbler_subtitle_active">Active • 50%% or 4:00 threshold</string>
+    <string name="lb_scrobbler_subtitle_disabled">Scrobbling disabled</string>
+    <string name="lb_current_session_format">Current Session: %1$s — %2$s</string>
+    <string name="lb_playing_now_sent">playing_now: Sent</string>
+    <string name="lb_playing_now_pending">playing_now: Pending/Queued</string>
+    <string name="lb_completed_listen_recorded">Completed Listen Recorded</string>
+    <string name="lb_ineligible_short">Ineligible (&lt; 30s)</string>
+    <string name="lb_no_active_session">No active track playback session</string>
+    <string name="lb_api_quota_format">API Quota: %1$d / %2$d remaining</string>
+    <string name="lb_api_quota_ready">API Quota: Ready</string>
+    <string name="lb_rate_limit_reset_format">X-RateLimit-Reset-In: %1$ds</string>
+    <string name="action_flush_queue_format">Flush Queue (%1$d)</string>
+    <string name="lb_token_card_title">ListenBrainz User Token</string>
+    <string name="lb_token_verified_user_format">Token verified as @%1$s (%2$s)</string>
+    <string name="lb_token_verified_simple">Token verified</string>
+    <string name="lb_token_invalid_warning">Token validation failed. Please check your ListenBrainz user token.</string>
+    <string name="lb_token_input_label">User Token (from listenbrainz.org/settings)</string>
+    <string name="cd_show_token">Show token</string>
+    <string name="cd_hide_token">Hide token</string>
+    <string name="action_validate_save_token">Validate &amp; Save Token</string>
+    <string name="lb_queued_playing_now_header">Queued Offline: Playing Now</string>
+    <string name="lb_pending_scrobbles_header_format">Pending Offline Scrobbles (%1$d)</string>
+    <string name="lb_pending_scrobbles_subtitle">Persisted in Room • Submitted via single/import when online</string>
+    <string name="action_clear_all">Clear All</string>
+    <string name="lb_playing_now_expires_format">playing_now • Expires %1$s</string>
+    <string name="lb_listened_at_attempts_format">Listened at %1$s • Attempts: %2$d</string>
+    <string name="lb_last_status_format">Last status: %1$s</string>
+    <string name="cd_remove_queued_scrobble">Remove queued scrobble</string>
+    <string name="lb_empty_queue_title">All Scrobbles Synced</string>
+    <string name="lb_empty_queue_body">Any tracks played while offline or during an HTTP 429 rate-limit window will be queued here automatically.</string>
+
+    <!-- Status & DomainError Messages -->
+    <string name="status_added_to_queue_format">Added \"%1$s\" to queue</string>
+    <string name="status_connected_as_format">Connected to ListenBrainz as %1$s</string>
+    <string name="status_scrobbling_enabled">ListenBrainz scrobbling enabled</string>
+    <string name="status_scrobbling_paused">ListenBrainz scrobbling paused</string>
+    <string name="status_flushed_count_format">Submitted %1$d queued listen(s) to ListenBrainz</string>
+    <string name="status_queue_up_to_date">Scrobble queue is up to date</string>
+    <string name="status_queue_cleared">Cleared offline scrobble queue</string>
+    <string name="cd_dismiss">Dismiss</string>
+
+    <string name="error_network_offline">No network connection available</string>
+    <string name="error_network_timeout">Network request timed out</string>
+    <string name="error_network_rate_limited_format">Rate limited by ListenBrainz; reset in %1$ds</string>
+    <string name="error_network_unauthorized">Invalid or unauthorized ListenBrainz user token</string>
+    <string name="error_network_bad_request">ListenBrainz rejected malformed submission payload</string>
+    <string name="error_network_server_format">ListenBrainz upstream server error (HTTP %1$d)</string>
+    <string name="error_validation_missing_token">ListenBrainz user token is not configured</string>
+    <string name="error_playback_unplayable_format">Video \"%1$s\" is not playable (%2$s)</string>
+    <string name="error_playback_no_audio_format">No compatible audio stream found for \"%1$s\"</string>
+    <string name="error_playback_cipher_format">Cipher decryption failed: %1$s</string>
+    <string name="error_playback_permission_format">Missing required media permission: %1$s</string>
+</resources>
