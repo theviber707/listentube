@@ -65,6 +65,49 @@ data class InnertubeContext(
         )
 
         /**
+         * Android client context for direct muxed (`itag 18`) and adaptive stream extraction.
+         */
+        fun android(
+            hl: String = "en",
+            gl: String = "US",
+            visitorData: String? = null,
+        ): InnertubeContext = InnertubeContext(
+            client = InnertubeClientInfo(
+                clientName = "ANDROID",
+                clientVersion = "20.03.32",
+                hl = hl,
+                gl = gl,
+                osName = "Android",
+                osVersion = "14",
+                androidSdkVersion = 34,
+                userAgent = ANDROID_USER_AGENT,
+                visitorData = visitorData,
+            ),
+        )
+
+        /**
+         * iOS client context for direct adaptive stream extraction fallback.
+         */
+        fun ios(
+            hl: String = "en",
+            gl: String = "US",
+            visitorData: String? = null,
+        ): InnertubeContext = InnertubeContext(
+            client = InnertubeClientInfo(
+                clientName = "IOS",
+                clientVersion = "20.03.02",
+                hl = hl,
+                gl = gl,
+                deviceMake = "Apple",
+                deviceModel = "iPhone16,2",
+                osName = "iPhone",
+                osVersion = "18.2.1.22C161",
+                userAgent = IOS_USER_AGENT,
+                visitorData = visitorData,
+            ),
+        )
+
+        /**
          * Android VR client context for direct adaptive stream extraction.
          */
         fun androidVr(
@@ -87,6 +130,10 @@ data class InnertubeContext(
 
         const val WEB_REMIX_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
+        const val ANDROID_USER_AGENT =
+            "com.google.android.youtube/20.03.32 (Linux; U; Android 14) gzip"
+        const val IOS_USER_AGENT =
+            "com.google.ios.youtube/20.03.02 (iPhone16,2; U; CPU iOS 18_2_1 like Mac OS X;)"
         const val ANDROID_VR_USER_AGENT =
             "com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 14; en_US; Quest 3; Build/UP1A.231005.007.A1; Cronet/132.0.6808.3)"
     }
@@ -104,6 +151,10 @@ data class InnertubeClientInfo(
     val gl: String = "US",
     @SerialName("platform")
     val platform: String? = null,
+    @SerialName("deviceMake")
+    val deviceMake: String? = null,
+    @SerialName("deviceModel")
+    val deviceModel: String? = null,
     @SerialName("osName")
     val osName: String? = null,
     @SerialName("osVersion")
@@ -188,7 +239,15 @@ data class InnertubeSearchRequest(
 // =============================================================================
 
 @Serializable
+data class InnertubeResponseContext(
+    @SerialName("visitorData")
+    val visitorData: String? = null,
+)
+
+@Serializable
 data class InnertubePlayerResponse(
+    @SerialName("responseContext")
+    val responseContext: InnertubeResponseContext? = null,
     @SerialName("playabilityStatus")
     val playabilityStatus: PlayabilityStatus? = null,
     @SerialName("streamingData")
@@ -371,6 +430,8 @@ data class InnertubeThumbnail(
 
 @Serializable
 data class InnertubeSearchResponse(
+    @SerialName("responseContext")
+    val responseContext: InnertubeResponseContext? = null,
     @SerialName("contents")
     val contents: SearchContents? = null,
     @SerialName("continuationContents")

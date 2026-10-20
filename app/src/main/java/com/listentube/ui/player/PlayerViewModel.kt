@@ -122,8 +122,7 @@ data class PlayerUiState(
 }
 
 /**
- * Abstraction for reading and persisting the user's ListenBrainz token, scrobble preferences,
- * and selected application locale.
+ * Abstraction for reading and persisting the user's ListenBrainz token and scrobble preferences.
  */
 interface ScrobblePreferencesStore {
     suspend fun getUserToken(): String?
@@ -131,8 +130,6 @@ interface ScrobblePreferencesStore {
     suspend fun getValidatedUserName(): String?
     suspend fun isScrobblingEnabled(): Boolean
     suspend fun setScrobblingEnabled(enabled: Boolean)
-    suspend fun getPreferredLocale(): AppLocale = AppLocale.fromLocale()
-    suspend fun setPreferredLocale(locale: AppLocale) {}
 }
 
 /**
@@ -141,7 +138,6 @@ interface ScrobblePreferencesStore {
 class InMemoryScrobblePreferencesStore(
     initialToken: String? = null,
     initialEnabled: Boolean = true,
-    initialLocale: AppLocale = AppLocale.fromLocale(),
 ) : ScrobblePreferencesStore {
     @Volatile
     private var token: String? = initialToken
@@ -151,9 +147,6 @@ class InMemoryScrobblePreferencesStore(
 
     @Volatile
     private var enabled: Boolean = initialEnabled
-
-    @Volatile
-    private var preferredLocale: AppLocale = initialLocale
 
     override suspend fun getUserToken(): String? = token
 
@@ -168,12 +161,6 @@ class InMemoryScrobblePreferencesStore(
 
     override suspend fun setScrobblingEnabled(enabled: Boolean) {
         this.enabled = enabled
-    }
-
-    override suspend fun getPreferredLocale(): AppLocale = preferredLocale
-
-    override suspend fun setPreferredLocale(locale: AppLocale) {
-        this.preferredLocale = locale
     }
 }
 
@@ -291,15 +278,13 @@ class PlayerViewModel(
     }
 
     /**
-     * Switches the active application locale (`en-US`, `pt-BR`, `es-MX`, or `ru-RU`),
-     * persists the preference, and updates [YouTubeMusicProvider]'s Innertube `hl`/`gl` context.
+     * Synchronizes the active application locale resolved from Android system / per-app language
+     * settings (`en-US`, `pt-BR`, `es-MX`, or `ru-RU`) and updates [YouTubeMusicProvider]'s
+     * Innertube `hl`/`gl` context.
      */
-    fun selectLocale(locale: AppLocale) {
+    fun onSystemLocaleChanged(locale: AppLocale) {
         youTubeMusicProvider.updateLocale(hl = locale.innertubeHl, gl = locale.innertubeGl)
         _uiState.update { it.copy(currentLocale = locale) }
-        viewModelScope.launch {
-            preferencesStore.setPreferredLocale(locale)
-        }
     }
 
     // -------------------------------------------------------------------------
@@ -516,12 +501,6 @@ class PlayerViewModel(
             player.seekTo(index, 0L)
             player.play()
         }
-    }
-
-    fun setPlaybackSpeed(speed: Float) {
-        val clampedSpeed = speed.coerceIn(0.25f, 3.0f)
-        _connectedPlayer.value?.setPlaybackSpeed(clampedSpeed)
-        _uiState.update { it.copy(playbackSpeed = clampedSpeed) }
     }
 
     fun cycleRepeatMode() {
@@ -762,14 +741,14 @@ class PlayerViewModel(
             val savedToken = preferencesStore.getUserToken().orEmpty()
             val savedUser = preferencesStore.getValidatedUserName()
             val enabled = preferencesStore.isScrobblingEnabled()
-            val preferredLocale = preferencesStore.getPreferredLocale()
+            val systemLocale = AppLocale.fromLocale()
             youTubeMusicProvider.updateLocale(
-                hl = preferredLocale.innertubeHl,
-                gl = preferredLocale.innertubeGl,
+                hl = systemLocale.innertubeHl,
+                gl = systemLocale.innertubeGl,
             )
             _uiState.update {
                 it.copy(
-                    currentLocale = preferredLocale,
+                    currentLocale = systemLocale,
                     listenBrainzTokenInput = savedToken,
                     configuredTokenMasked = savedToken.takeIf(String::isNotBlank)?.let(::maskToken),
                     validatedUserName = savedUser,

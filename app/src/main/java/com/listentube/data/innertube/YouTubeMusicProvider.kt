@@ -58,6 +58,9 @@ class YouTubeMusicProvider(
 
     override val sourceType: MediaSourceType = MediaSourceType.YOUTUBE_MUSIC
 
+    @Volatile
+    private var visitorData: String? = null
+
     /**
      * Updates the Innertube client language (`hl`) and country (`gl`) parameters at runtime.
      */
@@ -82,12 +85,12 @@ class YouTubeMusicProvider(
 
         val requestPayload = if (!continuationToken.isNullOrBlank()) {
             InnertubeSearchRequest(
-                context = InnertubeContext.webRemix(hl = hl, gl = gl),
+                context = InnertubeContext.webRemix(hl = hl, gl = gl, visitorData = visitorData),
                 continuation = continuationToken,
             )
         } else {
             InnertubeSearchRequest(
-                context = InnertubeContext.webRemix(hl = hl, gl = gl),
+                context = InnertubeContext.webRemix(hl = hl, gl = gl, visitorData = visitorData),
                 query = trimmedQuery,
                 params = InnertubeSearchRequest.SONGS_FILTER_PARAMS,
             )
@@ -100,6 +103,9 @@ class YouTubeMusicProvider(
             continuationToken = continuationToken,
             requestBody = requestPayload,
         ).map { response ->
+            response.responseContext?.visitorData?.takeIf { it.isNotBlank() }?.let {
+                visitorData = it
+            }
             parseSearchResponse(response)
         }
     }
@@ -114,7 +120,7 @@ class YouTubeMusicProvider(
         }
 
         val request = InnertubePlayerRequest(
-            context = InnertubeContext.webRemix(hl = hl, gl = gl),
+            context = InnertubeContext.webRemix(hl = hl, gl = gl, visitorData = visitorData),
             videoId = sanitizedId,
         )
 
@@ -124,6 +130,9 @@ class YouTubeMusicProvider(
             userAgent = InnertubeContext.WEB_REMIX_USER_AGENT,
             requestBody = request,
         ).flatMap { playerResponse ->
+            playerResponse.responseContext?.visitorData?.takeIf { it.isNotBlank() }?.let {
+                visitorData = it
+            }
             validatePlayability(videoId = sanitizedId, response = playerResponse).flatMap {
                 val details = playerResponse.videoDetails
                 if (details == null || details.videoId.isBlank() || details.title.isBlank()) {
@@ -140,7 +149,7 @@ class YouTubeMusicProvider(
                             title = details.title,
                             artistName = details.author.ifBlank { UNKNOWN_ARTIST },
                             durationMs = details.durationMs,
-                            artworkUrl = details.bestThumbnailUrl(),
+                            artworkUrl = details.bestThumbnailUrl()?.let(::upgradeArtworkUrlToHighRes),
                             sourceType = MediaSourceType.YOUTUBE_MUSIC,
                         ),
                     )
@@ -150,11 +159,11 @@ class YouTubeMusicProvider(
     }
 
     /**
-     * Resolves the highest-quality audio stream for [trackId].
+     * Resolves the highest-quality stream for [trackId].
      *
-     * If the selected adaptive audio format uses a `signatureCipher`, this method delegates
-     * `base.js` extraction and cipher evaluation to [cipherDecryptor], propagating any network
-     * or cipher failure upward via [AppResult.Failure].
+     * Prefers direct, unencrypted streams via the Android / iOS Innertube clients (including muxed
+     * video+audio when available so both Video Surface and Album Art modes work), and only delegates
+     * `base.js` cipher evaluation to [cipherDecryptor] when a `signatureCipher` is present.
      */
     override suspend fun resolveAudioStream(trackId: String): AppResult<ResolvedMediaStream> {
         val sanitizedId = trackId.trim()
@@ -185,26 +194,70 @@ class YouTubeMusicProvider(
     }
 
     /**
-     * Requests `/youtubei/v1/player` with `signatureTimestamp` (`sts`) when needed so ciphered
-     * formats can be decrypted deterministically.
+     * Requests `/youtubei/v1/player` using mobile Innertube clients (`ANDROID`, then `IOS`) with
+     * a valid `visitorData` token so direct stream URLs (both muxed video+audio and adaptive audio)
+     * are returned without requiring fragile `base.js` cipher extraction.
      */
     private suspend fun fetchPlayerResponseForStream(videoId: String): AppResult<InnertubePlayerResponse> {
-        // First request using the TV embedded client with signatureTimestamp from CipherDecryptor
-        return cipherDecryptor.getSignatureTimestamp().flatMap { sts ->
-            val embeddedRequest = InnertubePlayerRequest(
-                context = InnertubeContext.tvEmbedded(hl = hl, gl = gl),
-                videoId = videoId,
-                playbackContext = InnertubePlaybackContext(
-                    contentPlaybackContext = ContentPlaybackContext(signatureTimestamp = sts),
-                ),
-            )
-            postInnertube<InnertubePlayerRequest, InnertubePlayerResponse>(
-                endpointUrl = "${ytBaseUrl.trimEnd('/')}$ENDPOINT_PLAYER",
-                originHeader = DEFAULT_YT_BASE_URL,
-                userAgent = InnertubeContext.WEB_REMIX_USER_AGENT,
-                requestBody = embeddedRequest,
-            )
+        val currentVisitorData = ensureVisitorData(videoId)
+
+        val androidRequest = InnertubePlayerRequest(
+            context = InnertubeContext.android(hl = hl, gl = gl, visitorData = currentVisitorData),
+            videoId = videoId,
+        )
+        val androidResult = postInnertube<InnertubePlayerRequest, InnertubePlayerResponse>(
+            endpointUrl = "${ytBaseUrl.trimEnd('/')}$ENDPOINT_PLAYER",
+            originHeader = DEFAULT_YT_BASE_URL,
+            userAgent = InnertubeContext.ANDROID_USER_AGENT,
+            requestBody = androidRequest,
+        )
+        if (androidResult is AppResult.Success &&
+            androidResult.data.playabilityStatus?.isPlayable == true &&
+            androidResult.data.streamingData != null
+        ) {
+            return androidResult
         }
+
+        val iosRequest = InnertubePlayerRequest(
+            context = InnertubeContext.ios(hl = hl, gl = gl, visitorData = currentVisitorData),
+            videoId = videoId,
+        )
+        val iosResult = postInnertube<InnertubePlayerRequest, InnertubePlayerResponse>(
+            endpointUrl = "${ytBaseUrl.trimEnd('/')}$ENDPOINT_PLAYER",
+            originHeader = DEFAULT_YT_BASE_URL,
+            userAgent = InnertubeContext.IOS_USER_AGENT,
+            requestBody = iosRequest,
+        )
+        if (iosResult is AppResult.Success &&
+            iosResult.data.playabilityStatus?.isPlayable == true &&
+            iosResult.data.streamingData != null
+        ) {
+            return iosResult
+        }
+
+        return androidResult
+    }
+
+    private suspend fun ensureVisitorData(videoId: String): String? {
+        visitorData?.takeIf { it.isNotBlank() }?.let { return it }
+
+        val webRequest = InnertubePlayerRequest(
+            context = InnertubeContext.webRemix(hl = hl, gl = gl),
+            videoId = videoId,
+        )
+        val result = postInnertube<InnertubePlayerRequest, InnertubePlayerResponse>(
+            endpointUrl = "${ytmBaseUrl.trimEnd('/')}$ENDPOINT_PLAYER",
+            originHeader = DEFAULT_YTM_BASE_URL,
+            userAgent = InnertubeContext.WEB_REMIX_USER_AGENT,
+            requestBody = webRequest,
+        )
+        if (result is AppResult.Success) {
+            result.data.responseContext?.visitorData?.takeIf { it.isNotBlank() }?.let {
+                visitorData = it
+                return it
+            }
+        }
+        return visitorData
     }
 
     private fun validatePlayability(
@@ -243,15 +296,22 @@ class YouTubeMusicProvider(
                 ),
             )
 
+        // Prefer a muxed video+audio format (e.g. itag 18 MP4) when available so switching between
+        // Album Art mode and Video mode renders the video track seamlessly alongside audio.
+        val muxedFormats = streamingData.formats
+            .filter { !it.url.isNullOrBlank() || !it.rawCipher.isNullOrBlank() }
+            .sortedByDescending { it.effectiveBitrate }
+
         val candidateAudioFormats = (streamingData.adaptiveFormats + streamingData.formats)
             .filter { it.isAudioOnly && (!it.url.isNullOrBlank() || !it.rawCipher.isNullOrBlank()) }
             .sortedByDescending { it.audioQualityRank() }
 
-        val bestFormat = candidateAudioFormats.firstOrNull()
+        val bestFormat = muxedFormats.firstOrNull()
+            ?: candidateAudioFormats.firstOrNull()
             ?: return AppResult.Failure(
                 DomainError.Playback.NoAudioStreamFound(
                     videoId = videoId,
-                    message = "No audio-only adaptiveFormats found for '$videoId'",
+                    message = "No playable audio or muxed formats found for '$videoId'",
                 ),
             )
 
@@ -456,6 +516,7 @@ class YouTubeMusicProvider(
             ?.thumbnails
             ?.maxByOrNull { it.width * it.height }
             ?.url
+            ?.let(::upgradeArtworkUrlToHighRes)
 
         return MediaTrack(
             id = videoId,
@@ -466,6 +527,20 @@ class YouTubeMusicProvider(
             artworkUrl = artworkUrl,
             sourceType = MediaSourceType.YOUTUBE_MUSIC,
         )
+    }
+
+    private fun upgradeArtworkUrlToHighRes(rawUrl: String): String {
+        val trimmed = rawUrl.trim()
+        if (GOOGLE_LH3_SIZE_PARAM_REGEX.containsMatchIn(trimmed)) {
+            return GOOGLE_LH3_SIZE_PARAM_REGEX.replace(trimmed, "=w1080-h1080-l90-rj")
+        }
+        if (trimmed.contains("i.ytimg.com/vi/")) {
+            return trimmed
+                .substringBefore('?')
+                .replace("/default.jpg", "/hqdefault.jpg")
+                .replace("/mqdefault.jpg", "/hqdefault.jpg")
+        }
+        return trimmed
     }
 
     private fun parseDurationTextToMs(durationText: String): Long {
@@ -500,5 +575,6 @@ class YouTubeMusicProvider(
 
         private const val UNKNOWN_ARTIST = "Unknown Artist"
         private val DURATION_TEXT_REGEX = Regex("""^\d{1,2}:\d{2}(?::\d{2})?$""")
+        private val GOOGLE_LH3_SIZE_PARAM_REGEX = Regex("""=w\d+-h\d+[^/?#]*$""")
     }
 }

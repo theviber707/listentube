@@ -282,21 +282,23 @@ private fun LiveListenBrainzStatusCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
 
-                        val thresholdStatus = when {
-                            sessionState.scrobbleCompleted -> strings.lbCompletedListenRecorded
-                            !sessionState.isEligibleForScrobble -> strings.lbIneligibleShortTrack
-                            else -> "${formatDurationMs(sessionState.accumulatedPlayedMs)} / ${formatDurationMs(sessionState.thresholdMs)}"
-                        }
-                        Text(
-                            text = thresholdStatus,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = if (sessionState.scrobbleCompleted) {
-                                MaterialTheme.colorScheme.primary
+                        if (sessionState.scrobbleCompleted || (sessionState.isEligibleForScrobble && sessionState.thresholdMs > 0L)) {
+                            val thresholdStatus = if (sessionState.scrobbleCompleted) {
+                                strings.lbCompletedListenRecorded
                             } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                        )
+                                "${formatDurationMs(sessionState.accumulatedPlayedMs)} / ${formatDurationMs(sessionState.thresholdMs)}"
+                            }
+                            Text(
+                                text = thresholdStatus,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = if (sessionState.scrobbleCompleted) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                            )
+                        }
                     }
 
                     if (sessionState.isEligibleForScrobble && sessionState.thresholdMs > 0L) {

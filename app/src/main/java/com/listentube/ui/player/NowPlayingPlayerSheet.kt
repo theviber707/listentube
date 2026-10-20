@@ -14,14 +14,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -42,8 +45,6 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -103,7 +104,6 @@ fun NowPlayingPlayerSheet(
     onSkipNext: () -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
-    onSelectPlaybackSpeed: (Float) -> Unit,
     onSelectRenderMode: (PlayerRenderMode) -> Unit,
     onSelectQueueIndex: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -114,6 +114,7 @@ fun NowPlayingPlayerSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        dragHandle = null,
         modifier = modifier,
     ) {
         NowPlayingSheetContent(
@@ -127,7 +128,6 @@ fun NowPlayingPlayerSheet(
             onSkipNext = onSkipNext,
             onToggleShuffle = onToggleShuffle,
             onCycleRepeat = onCycleRepeat,
-            onSelectPlaybackSpeed = onSelectPlaybackSpeed,
             onSelectRenderMode = onSelectRenderMode,
             onSelectQueueIndex = onSelectQueueIndex,
         )
@@ -146,196 +146,208 @@ fun NowPlayingSheetContent(
     onSkipNext: () -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
-    onSelectPlaybackSpeed: (Float) -> Unit,
     onSelectRenderMode: (PlayerRenderMode) -> Unit,
     onSelectQueueIndex: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val strings = LocalAppStrings.current
 
-    Column(
+    LazyColumn(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Header Row: Collapse button + Audio Artwork / Video Surface Mode Switcher
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            IconButton(onClick = onCollapse) {
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = strings.cdCollapsePlayer,
-                )
-            }
-
-            RenderModeToggleBar(
-                currentMode = uiState.renderMode,
-                onSelectMode = onSelectRenderMode,
-            )
-
-            Spacer(modifier = Modifier.width(48.dp))
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Media Viewport: Switches smoothly between Album Artwork and ExoPlayer Video Surface
-        AnimatedContent(
-            targetState = uiState.renderMode,
-            label = "PlayerViewportMode",
-        ) { renderMode ->
-            when (renderMode) {
-                PlayerRenderMode.AUDIO_ARTWORK -> {
-                    AudioArtworkViewport(
-                        track = track,
-                        isPlaying = uiState.isPlaying,
-                    )
-                }
-
-                PlayerRenderMode.VIDEO_SURFACE -> {
-                    VideoSurfaceViewport(
-                        player = player,
-                        track = track,
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Track Title, Artist, Album & Live ListenBrainz Scrobble Pill
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.Start,
-        ) {
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = buildString {
-                    append(track.artistName)
-                    if (!track.albumName.isNullOrBlank()) {
-                        append(" • ")
-                        append(track.albumName)
-                    }
-                },
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            ListenBrainzLiveStatusPill(
-                sessionState = uiState.scrobbleSession,
-                queuedPlayingNowPresent = uiState.queuedPlayingNow != null,
-                scrobblingEnabled = uiState.scrobblingEnabled,
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Seekbar with Scrobble Threshold Marker
-        PlaybackSeekBar(
-            currentPositionMs = uiState.currentPositionMs,
-            durationMs = uiState.durationMs.coerceAtLeast(track.durationMs),
-            scrobbleThresholdMs = uiState.scrobbleSession.thresholdMs.takeIf { it > 0L }
-                ?: ScrobbleManager.calculateThresholdMs(uiState.durationMs.coerceAtLeast(track.durationMs)),
-            onSeekTo = onSeekTo,
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Transport Controls Row
-        TransportControlsRow(
-            isPlaying = uiState.isPlaying,
-            isBuffering = uiState.isBuffering,
-            shuffleEnabled = uiState.shuffleModeEnabled,
-            repeatMode = uiState.repeatMode,
-            playbackSpeed = uiState.playbackSpeed,
-            onToggleShuffle = onToggleShuffle,
-            onSkipPrevious = onSkipPrevious,
-            onTogglePlayPause = onTogglePlayPause,
-            onSkipNext = onSkipNext,
-            onCycleRepeat = onCycleRepeat,
-            onSelectPlaybackSpeed = onSelectPlaybackSpeed,
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Up Next Queue Preview
-        if (uiState.playbackQueue.size > 1) {
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = strings.upNextHeader(uiState.playbackQueue.size),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.align(Alignment.Start),
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(160.dp),
+        item(key = "player_main_section") {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                itemsIndexed(
-                    items = uiState.playbackQueue,
-                    key = { index, item -> "${item.id}_$index" },
-                ) { index, queueTrack ->
-                    val isCurrent = index == uiState.currentQueueIndex
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (isCurrent) {
-                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-                                } else {
-                                    Color.Transparent
-                                },
-                            )
-                            .clickable { onSelectQueueIndex(index) }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "${index + 1}.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.width(28.dp),
+                // Header Row: Collapse button + Audio Artwork / Video Surface Mode Switcher
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    IconButton(onClick = onCollapse) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = strings.cdCollapsePlayer,
                         )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = queueTrack.title,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = queueTrack.artistName,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                    }
+
+                    RenderModeToggleBar(
+                        currentMode = uiState.renderMode,
+                        onSelectMode = onSelectRenderMode,
+                    )
+
+                    Spacer(modifier = Modifier.width(48.dp))
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Media Viewport: Switches smoothly between Album Artwork and ExoPlayer Video Surface
+                AnimatedContent(
+                    targetState = uiState.renderMode,
+                    label = "PlayerViewportMode",
+                ) { renderMode ->
+                    when (renderMode) {
+                        PlayerRenderMode.AUDIO_ARTWORK -> {
+                            AudioArtworkViewport(
+                                track = track,
+                                isPlaying = uiState.isPlaying,
                             )
                         }
-                        Text(
-                            text = formatDurationMs(queueTrack.durationMs),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+
+                        PlayerRenderMode.VIDEO_SURFACE -> {
+                            VideoSurfaceViewport(
+                                player = player,
+                                track = track,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Track Title, Artist, Album & Live ListenBrainz Scrobble Pill
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.Start,
+                ) {
+                    Text(
+                        text = track.title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = buildString {
+                            append(track.artistName)
+                            if (!track.albumName.isNullOrBlank()) {
+                                append(" • ")
+                                append(track.albumName)
+                            }
+                        },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+
+                    val hasActiveStatus = !uiState.scrobblingEnabled ||
+                        uiState.scrobbleSession.scrobbleCompleted ||
+                        uiState.scrobbleSession.playingNowDispatched ||
+                        uiState.queuedPlayingNow != null ||
+                        (uiState.scrobbleSession.isEligibleForScrobble && uiState.scrobbleSession.thresholdMs > 0L)
+
+                    if (hasActiveStatus) {
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        ListenBrainzLiveStatusPill(
+                            sessionState = uiState.scrobbleSession,
+                            queuedPlayingNowPresent = uiState.queuedPlayingNow != null,
+                            scrobblingEnabled = uiState.scrobblingEnabled,
                         )
                     }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Seekbar with Scrobble Threshold Marker
+                PlaybackSeekBar(
+                    currentPositionMs = uiState.currentPositionMs,
+                    durationMs = uiState.durationMs.coerceAtLeast(track.durationMs),
+                    scrobbleThresholdMs = uiState.scrobbleSession.thresholdMs.takeIf { it > 0L }
+                        ?: ScrobbleManager.calculateThresholdMs(uiState.durationMs.coerceAtLeast(track.durationMs)),
+                    onSeekTo = onSeekTo,
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Transport Controls Row
+                TransportControlsRow(
+                    isPlaying = uiState.isPlaying,
+                    isBuffering = uiState.isBuffering,
+                    shuffleEnabled = uiState.shuffleModeEnabled,
+                    repeatMode = uiState.repeatMode,
+                    onToggleShuffle = onToggleShuffle,
+                    onSkipPrevious = onSkipPrevious,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onSkipNext = onSkipNext,
+                    onCycleRepeat = onCycleRepeat,
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+
+        // Up Next Queue Section
+        if (uiState.playbackQueue.size > 1) {
+            item(key = "up_next_header") {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = strings.upNextHeader(uiState.playbackQueue.size),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+
+            itemsIndexed(
+                items = uiState.playbackQueue,
+                key = { index, item -> "${item.id}_$index" },
+            ) { index, queueTrack ->
+                val isCurrent = index == uiState.currentQueueIndex
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (isCurrent) {
+                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                            } else {
+                                Color.Transparent
+                            },
+                        )
+                        .clickable { onSelectQueueIndex(index) }
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "${index + 1}.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(32.dp),
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = queueTrack.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = queueTrack.artistName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(
+                        text = formatDurationMs(queueTrack.durationMs),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -553,7 +565,6 @@ private fun ListenBrainzLiveStatusPill(
                         sessionState.scrobbleCompleted -> strings.lbStatusScrobbled
                         sessionState.playingNowDispatched -> strings.lbStatusPlayingNowActive
                         queuedPlayingNowPresent -> strings.lbStatusPlayingNowQueuedOffline
-                        !sessionState.isEligibleForScrobble -> strings.lbStatusTrackTooShort
                         else -> strings.lbStatusTrackingDuration
                     }
                     Text(
@@ -649,115 +660,90 @@ private fun TransportControlsRow(
     isBuffering: Boolean,
     shuffleEnabled: Boolean,
     repeatMode: Int,
-    playbackSpeed: Float,
     onToggleShuffle: () -> Unit,
     onSkipPrevious: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onSkipNext: () -> Unit,
     onCycleRepeat: () -> Unit,
-    onSelectPlaybackSpeed: (Float) -> Unit,
 ) {
     val strings = LocalAppStrings.current
-    val availableSpeeds = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onToggleShuffle) {
+            Icon(
+                imageVector = Icons.Default.Shuffle,
+                contentDescription = strings.cdToggleShuffle,
+                tint = if (shuffleEnabled) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+
+        IconButton(
+            onClick = onSkipPrevious,
+            modifier = Modifier.size(48.dp),
         ) {
-            IconButton(onClick = onToggleShuffle) {
-                Icon(
-                    imageVector = Icons.Default.Shuffle,
-                    contentDescription = strings.cdToggleShuffle,
-                    tint = if (shuffleEnabled) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+            Icon(
+                imageVector = Icons.Default.SkipPrevious,
+                contentDescription = strings.cdPreviousTrack,
+                modifier = Modifier.size(32.dp),
+            )
+        }
+
+        FilledIconButton(
+            onClick = onTogglePlayPause,
+            shape = CircleShape,
+            modifier = Modifier.size(68.dp),
+        ) {
+            if (isBuffering) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    strokeWidth = 3.dp,
+                    color = MaterialTheme.colorScheme.onPrimary,
                 )
-            }
-
-            IconButton(
-                onClick = onSkipPrevious,
-                modifier = Modifier.size(48.dp),
-            ) {
+            } else {
                 Icon(
-                    imageVector = Icons.Default.SkipPrevious,
-                    contentDescription = strings.cdPreviousTrack,
-                    modifier = Modifier.size(32.dp),
-                )
-            }
-
-            FilledIconButton(
-                onClick = onTogglePlayPause,
-                shape = CircleShape,
-                modifier = Modifier.size(68.dp),
-            ) {
-                if (isBuffering) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(28.dp),
-                        strokeWidth = 3.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                } else {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) strings.cdPause else strings.cdPlay,
-                        modifier = Modifier.size(36.dp),
-                    )
-                }
-            }
-
-            IconButton(
-                onClick = onSkipNext,
-                modifier = Modifier.size(48.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.SkipNext,
-                    contentDescription = strings.cdNextTrack,
-                    modifier = Modifier.size(32.dp),
-                )
-            }
-
-            IconButton(onClick = onCycleRepeat) {
-                val repeatIcon = if (repeatMode == Player.REPEAT_MODE_ONE) {
-                    Icons.Default.RepeatOne
-                } else {
-                    Icons.Default.Repeat
-                }
-                val repeatActive = repeatMode != Player.REPEAT_MODE_OFF
-                Icon(
-                    imageVector = repeatIcon,
-                    contentDescription = strings.cdCycleRepeat,
-                    tint = if (repeatActive) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) strings.cdPause else strings.cdPlay,
+                    modifier = Modifier.size(36.dp),
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
+        IconButton(
+            onClick = onSkipNext,
+            modifier = Modifier.size(48.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.SkipNext,
+                contentDescription = strings.cdNextTrack,
+                modifier = Modifier.size(32.dp),
+            )
+        }
 
-        AssistChip(
-            onClick = {
-                val idx = availableSpeeds.indexOfFirst { it == playbackSpeed }
-                val nextSpeed = availableSpeeds[(idx + 1) % availableSpeeds.size]
-                onSelectPlaybackSpeed(nextSpeed)
-            },
-            label = {
-                Text(strings.playbackSpeedFormat(playbackSpeed))
-            },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Default.Speed,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                )
-            },
-        )
+        IconButton(onClick = onCycleRepeat) {
+            val repeatIcon = if (repeatMode == Player.REPEAT_MODE_ONE) {
+                Icons.Default.RepeatOne
+            } else {
+                Icons.Default.Repeat
+            }
+            val repeatActive = repeatMode != Player.REPEAT_MODE_OFF
+            Icon(
+                imageVector = repeatIcon,
+                contentDescription = strings.cdCycleRepeat,
+                tint = if (repeatActive) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
     }
 }
 

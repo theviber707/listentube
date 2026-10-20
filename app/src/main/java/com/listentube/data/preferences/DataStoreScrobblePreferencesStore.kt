@@ -11,7 +11,6 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.listentube.ui.i18n.AppLocale
 import com.listentube.ui.player.ScrobblePreferencesStore
 import kotlinx.coroutines.flow.first
 
@@ -64,22 +63,9 @@ class DataStoreScrobblePreferencesStore(
         }
     }
 
-    override suspend fun getPreferredLocale(): AppLocale {
-        val prefs = context.listenTubeDataStore.data.first()
-        val savedTag = prefs[KEY_PREFERRED_LOCALE_TAG]
-        return AppLocale.fromLanguageTag(savedTag)
-    }
-
-    override suspend fun setPreferredLocale(locale: AppLocale) {
-        context.listenTubeDataStore.edit { prefs ->
-            prefs[KEY_PREFERRED_LOCALE_TAG] = locale.languageTag
-        }
-    }
-
     companion object {
         private val KEY_USER_TOKEN = stringPreferencesKey("listenbrainz_user_token")
         private val KEY_VALIDATED_USER_NAME = stringPreferencesKey("listenbrainz_validated_username")
         private val KEY_SCROBBLING_ENABLED = booleanPreferencesKey("listenbrainz_scrobbling_enabled")
-        private val KEY_PREFERRED_LOCALE_TAG = stringPreferencesKey("app_preferred_locale_tag")
     }
 }

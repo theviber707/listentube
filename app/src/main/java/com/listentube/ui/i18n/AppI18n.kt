@@ -8,6 +8,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.core.os.ConfigurationCompat
 import com.listentube.core.result.DomainError
 import java.util.Locale
 
@@ -95,8 +97,6 @@ data class AppStrings(
     val appName: String,
     val badgeScrobbled: String,
     val cdScrobbleQueue: String,
-    val cdSelectLanguage: String,
-    val languageMenuTitle: String,
     val navYoutubeMusic: String,
     val navLocalAudio: String,
     val navListenBrainz: String,
@@ -217,8 +217,6 @@ val EnUsStrings = AppStrings(
     appName = "ListenTube",
     badgeScrobbled = "Scrobbled",
     cdScrobbleQueue = "ListenBrainz Scrobble Queue",
-    cdSelectLanguage = "Change language",
-    languageMenuTitle = "Language",
     navYoutubeMusic = "YouTube Music",
     navLocalAudio = "Local Audio",
     navListenBrainz = "ListenBrainz",
@@ -341,8 +339,6 @@ val PtBrStrings = AppStrings(
     appName = "ListenTube",
     badgeScrobbled = "Scrobblado",
     cdScrobbleQueue = "Fila de Scrobbles do ListenBrainz",
-    cdSelectLanguage = "Alterar idioma",
-    languageMenuTitle = "Idioma",
     navYoutubeMusic = "YouTube Music",
     navLocalAudio = "Áudio Local",
     navListenBrainz = "ListenBrainz",
@@ -465,8 +461,6 @@ val EsMxStrings = AppStrings(
     appName = "ListenTube",
     badgeScrobbled = "Scrobbleado",
     cdScrobbleQueue = "Cola de Scrobbles de ListenBrainz",
-    cdSelectLanguage = "Cambiar idioma",
-    languageMenuTitle = "Idioma",
     navYoutubeMusic = "YouTube Music",
     navLocalAudio = "Audio Local",
     navListenBrainz = "ListenBrainz",
@@ -589,8 +583,6 @@ val RuRuStrings = AppStrings(
     appName = "ListenTube",
     badgeScrobbled = "Заскробблено",
     cdScrobbleQueue = "Очередь скробблов ListenBrainz",
-    cdSelectLanguage = "Изменить язык",
-    languageMenuTitle = "Язык",
     navYoutubeMusic = "YouTube Music",
     navLocalAudio = "Локальное аудио",
     navListenBrainz = "ListenBrainz",
@@ -750,11 +742,22 @@ val LocalAppLocale = staticCompositionLocalOf { AppLocale.fromLocale() }
 val LocalAppStrings = staticCompositionLocalOf { stringsForLocale(AppLocale.fromLocale()) }
 
 /**
+ * Resolves the active [AppLocale] from the Android system configuration (which reflects both
+ * system-wide language settings and Android 13+ per-app language preferences).
+ */
+@Composable
+fun rememberSystemAppLocale(): AppLocale {
+    val configuration = LocalConfiguration.current
+    val primaryLocale = ConfigurationCompat.getLocales(configuration)[0] ?: Locale.getDefault()
+    return AppLocale.fromLocale(primaryLocale)
+}
+
+/**
  * Provides [LocalAppLocale] and [LocalAppStrings] to the Compose hierarchy for [locale].
  */
 @Composable
 fun ProvideAppStrings(
-    locale: AppLocale,
+    locale: AppLocale = rememberSystemAppLocale(),
     content: @Composable () -> Unit,
 ) {
     val strings = stringsForLocale(locale)

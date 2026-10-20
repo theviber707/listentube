@@ -10,7 +10,6 @@
     <string name="nav_local_audio">Audio Local</string>
     <string name="nav_listenbrainz">ListenBrainz</string>
     <string name="cd_scrobble_queue">Cola de Scrobbles de ListenBrainz</string>
-    <string name="cd_change_language">Cambiar Idioma</string>
     <string name="badge_scrobbled">Registrado</string>
 
     <!-- YouTube Music Search Tab -->

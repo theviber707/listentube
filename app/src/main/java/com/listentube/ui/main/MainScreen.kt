@@ -24,12 +24,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -43,8 +41,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,15 +54,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,10 +70,10 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.listentube.core.result.DomainError
 import com.listentube.domain.media.MediaTrack
-import com.listentube.ui.i18n.AppLocale
 import com.listentube.ui.i18n.LocalAppStrings
 import com.listentube.ui.i18n.ProvideAppStrings
 import com.listentube.ui.i18n.localizedMessage
+import com.listentube.ui.i18n.rememberSystemAppLocale
 import com.listentube.ui.player.MainDestination
 import com.listentube.ui.player.NowPlayingPlayerSheet
 import com.listentube.ui.player.PlayerUiState
@@ -88,7 +84,7 @@ import com.listentube.ui.scrobble.ScrobbleQueueScreen
 /**
  * Root application screen hosting YouTube Music search, Local MediaStore library browsing,
  * the ListenBrainz Scrobble Queue & Configuration tab, a persistent mini-player bar,
- * runtime locale selection (`en-US`, `pt-BR`, `es-MX`, `ru-RU`), and the expandable [NowPlayingPlayerSheet].
+ * and the expandable [NowPlayingPlayerSheet].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,8 +94,22 @@ fun MainScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val connectedPlayer by viewModel.connectedPlayer.collectAsState()
+    val systemLocale = rememberSystemAppLocale()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
-    ProvideAppStrings(locale = uiState.currentLocale) {
+    LaunchedEffect(systemLocale) {
+        viewModel.onSystemLocaleChanged(systemLocale)
+    }
+
+    LaunchedEffect(uiState.isPlayerSheetExpanded) {
+        if (uiState.isPlayerSheetExpanded) {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
+
+    ProvideAppStrings(locale = systemLocale) {
         val strings = LocalAppStrings.current
 
         Scaffold(
@@ -131,11 +141,6 @@ fun MainScreen(
                         }
                     },
                     actions = {
-                        LocaleSelectorAction(
-                            currentLocale = uiState.currentLocale,
-                            onSelectLocale = viewModel::selectLocale,
-                        )
-
                         IconButton(
                             onClick = { viewModel.selectDestination(MainDestination.SCROBBLE_QUEUE) },
                         ) {
@@ -278,58 +283,9 @@ fun MainScreen(
                 onSkipNext = viewModel::skipToNext,
                 onToggleShuffle = viewModel::toggleShuffleMode,
                 onCycleRepeat = viewModel::cycleRepeatMode,
-                onSelectPlaybackSpeed = viewModel::setPlaybackSpeed,
                 onSelectRenderMode = viewModel::setRenderMode,
                 onSelectQueueIndex = viewModel::skipToQueueIndex,
             )
-        }
-    }
-}
-
-@Composable
-private fun LocaleSelectorAction(
-    currentLocale: AppLocale,
-    onSelectLocale: (AppLocale) -> Unit,
-) {
-    val strings = LocalAppStrings.current
-    var expanded by remember { mutableStateOf(false) }
-
-    Box {
-        IconButton(onClick = { expanded = true }) {
-            Icon(
-                imageVector = Icons.Default.Language,
-                contentDescription = strings.cdSelectLanguage,
-            )
-        }
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            AppLocale.entries.forEach { locale ->
-                val isSelected = locale == currentLocale
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = "${locale.nativeDisplayName} (${locale.languageTag})",
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        )
-                    },
-                    trailingIcon = {
-                        if (isSelected) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    },
-                    onClick = {
-                        expanded = false
-                        onSelectLocale(locale)
-                    },
-                )
-            }
         }
     }
 }
@@ -344,6 +300,13 @@ private fun YouTubeExploreTab(
     onEnqueueTrack: (MediaTrack) -> Unit,
 ) {
     val strings = LocalAppStrings.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val submitAndClearFocus = {
+        focusManager.clearFocus()
+        keyboardController?.hide()
+        onSubmitSearch()
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -367,12 +330,12 @@ private fun YouTubeExploreTab(
                     }
                 },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { onSubmitSearch() }),
+                keyboardActions = KeyboardActions(onSearch = { submitAndClearFocus() }),
                 modifier = Modifier.weight(1f),
             )
 
             Button(
-                onClick = onSubmitSearch,
+                onClick = submitAndClearFocus,
                 enabled = !uiState.isSearching && uiState.searchQuery.isNotBlank(),
             ) {
                 Text(strings.actionSearch)
@@ -422,7 +385,11 @@ private fun YouTubeExploreTab(
                     TrackListItem(
                         track = track,
                         isCurrentlyPlaying = uiState.currentTrack?.id == track.id,
-                        onPlay = { onPlayTrack(track) },
+                        onPlay = {
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                            onPlayTrack(track)
+                        },
                         onEnqueue = { onEnqueueTrack(track) },
                     )
                 }
@@ -465,6 +432,8 @@ private fun LocalLibraryTab(
     onEnqueueTrack: (MediaTrack) -> Unit,
 ) {
     val strings = LocalAppStrings.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val tracks = uiState.filteredLocalTracks
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -521,7 +490,11 @@ private fun LocalLibraryTab(
                     TrackListItem(
                         track = track,
                         isCurrentlyPlaying = uiState.currentTrack?.id == track.id,
-                        onPlay = { onPlayTrack(track) },
+                        onPlay = {
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                            onPlayTrack(track)
+                        },
                         onEnqueue = { onEnqueueTrack(track) },
                     )
                 }
