@@ -12,6 +12,8 @@ import com.listentube.core.result.map
 import com.listentube.data.innertube.cipher.CipherDecryptor
 import com.listentube.data.innertube.model.AdaptiveFormat
 import com.listentube.data.innertube.model.ContentPlaybackContext
+import com.listentube.data.innertube.model.InnertubeBrowseRequest
+import com.listentube.data.innertube.model.InnertubeBrowseResponse
 import com.listentube.data.innertube.model.InnertubeContext
 import com.listentube.data.innertube.model.InnertubePlaybackContext
 import com.listentube.data.innertube.model.InnertubePlayerRequest
@@ -19,7 +21,10 @@ import com.listentube.data.innertube.model.InnertubePlayerResponse
 import com.listentube.data.innertube.model.InnertubeSearchRequest
 import com.listentube.data.innertube.model.InnertubeSearchResponse
 import com.listentube.data.innertube.model.MusicResponsiveListItemRenderer
+import com.listentube.data.innertube.model.MusicShelfItem
 import com.listentube.data.innertube.model.MusicShelfRenderer
+import com.listentube.domain.media.MediaCollection
+import com.listentube.domain.media.MediaCollectionType
 import com.listentube.domain.media.MediaProvider
 import com.listentube.domain.media.MediaSearchPage
 import com.listentube.domain.media.MediaSourceType
@@ -432,17 +437,7 @@ class YouTubeMusicProvider(
     }
 
     private fun parseSearchResponse(response: InnertubeSearchResponse): MediaSearchPage {
-        val shelves = mutableListOf<MusicShelfRenderer>()
-
-        response.continuationContents?.musicShelfContinuation?.let { shelves += it }
-
-        val tabs = response.contents?.tabbedSearchResultsRenderer?.tabs.orEmpty()
-        for (tab in tabs) {
-            val sections = tab.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
-            for (section in sections) {
-                section.musicShelfRenderer?.let { shelves += it }
-            }
-        }
+        val shelves = collectSearchShelves(response)
 
         val tracks = mutableListOf<MediaTrack>()
         var nextContinuation: String? = null
@@ -463,6 +458,226 @@ class YouTubeMusicProvider(
             continuationToken = nextContinuation,
         )
     }
+
+    private fun collectSearchShelves(response: InnertubeSearchResponse): List<MusicShelfRenderer> {
+        val shelves = mutableListOf<MusicShelfRenderer>()
+        response.continuationContents?.musicShelfContinuation?.let { shelves += it }
+        val tabs = response.contents?.tabbedSearchResultsRenderer?.tabs.orEmpty()
+        for (tab in tabs) {
+            val sections = tab.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
+            for (section in sections) {
+                section.musicShelfRenderer?.let { shelves += it }
+            }
+        }
+        return shelves
+    }
+
+    /**
+     * Searches YouTube Music for albums or playlists (depending on [type]) matching [query].
+     */
+    suspend fun searchCollections(
+        query: String,
+        type: MediaCollectionType,
+    ): AppResult<List<MediaCollection>> {
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.isEmpty()) {
+            return AppResult.Failure(
+                DomainError.Validation.InvalidMetadata("search query cannot be blank"),
+            )
+        }
+
+        val request = InnertubeSearchRequest(
+            context = InnertubeContext.webRemix(hl = hl, gl = gl, visitorData = visitorData),
+            query = trimmedQuery,
+            params = when (type) {
+                MediaCollectionType.ALBUM -> InnertubeSearchRequest.ALBUMS_FILTER_PARAMS
+                MediaCollectionType.PLAYLIST -> InnertubeSearchRequest.PLAYLISTS_FILTER_PARAMS
+            },
+        )
+
+        return postInnertube<InnertubeSearchRequest, InnertubeSearchResponse>(
+            endpointUrl = "${ytmBaseUrl.trimEnd('/')}$ENDPOINT_SEARCH",
+            originHeader = DEFAULT_YTM_BASE_URL,
+            userAgent = InnertubeContext.WEB_REMIX_USER_AGENT,
+            requestBody = request,
+        ).map { response ->
+            response.responseContext?.visitorData?.takeIf { it.isNotBlank() }?.let {
+                visitorData = it
+            }
+            collectSearchShelves(response)
+                .asSequence()
+                .flatMap { it.contents.asSequence() }
+                .mapNotNull { it.musicResponsiveListItemRenderer }
+                .mapNotNull { parseShelfItemToCollection(it, type) }
+                .distinctBy { it.playlistId }
+                .toList()
+        }
+    }
+
+    /**
+     * Fetches every playable track of [collection] (following continuation pages), producing an
+     * ordered list suitable for use as an isolated playback queue.
+     */
+    suspend fun getCollectionTracks(collection: MediaCollection): AppResult<List<MediaTrack>> {
+        val playlistId = collection.playlistId.trim()
+        if (playlistId.isEmpty()) {
+            return AppResult.Failure(DomainError.Validation.InvalidMetadata("playlistId"))
+        }
+
+        val tracks = mutableListOf<MediaTrack>()
+        var continuation: String? = null
+        var page = 0
+
+        do {
+            val request = if (continuation == null) {
+                InnertubeBrowseRequest(
+                    context = InnertubeContext.webRemix(hl = hl, gl = gl, visitorData = visitorData),
+                    browseId = "$PLAYLIST_BROWSE_PREFIX$playlistId",
+                )
+            } else {
+                InnertubeBrowseRequest(
+                    context = InnertubeContext.webRemix(hl = hl, gl = gl, visitorData = visitorData),
+                    continuation = continuation,
+                )
+            }
+
+            val result = postInnertube<InnertubeBrowseRequest, InnertubeBrowseResponse>(
+                endpointUrl = "${ytmBaseUrl.trimEnd('/')}$ENDPOINT_BROWSE",
+                originHeader = DEFAULT_YTM_BASE_URL,
+                userAgent = InnertubeContext.WEB_REMIX_USER_AGENT,
+                requestBody = request,
+            )
+            val response = when (result) {
+                is AppResult.Success -> result.data
+                is AppResult.Failure -> return result
+            }
+
+            val items = collectBrowseItems(response)
+            continuation = items.lastOrNull()
+                ?.continuationItemRenderer
+                ?.continuationEndpoint
+                ?.continuationCommand
+                ?.token
+                ?.takeIf { it.isNotBlank() }
+                ?: collectBrowseShelves(response)
+                    .flatMap { it.continuations }
+                    .firstNotNullOfOrNull { it.nextContinuationData?.continuation?.takeIf(String::isNotBlank) }
+
+            for (item in items) {
+                val renderer = item.musicResponsiveListItemRenderer ?: continue
+                if (renderer.musicItemRendererDisplayPolicy == DISPLAY_POLICY_GREY_OUT) continue
+                val track = parseShelfItemToTrack(renderer) ?: continue
+                tracks += track.copy(
+                    albumName = track.albumName
+                        ?: collection.title.takeIf { collection.type == MediaCollectionType.ALBUM },
+                    artworkUrl = track.artworkUrl ?: collection.artworkUrl,
+                )
+            }
+            page++
+        } while (continuation != null && page < MAX_COLLECTION_PAGES)
+
+        return AppResult.Success(tracks.distinctBy { it.id })
+    }
+
+    private fun collectBrowseShelves(response: InnertubeBrowseResponse): List<MusicShelfRenderer> {
+        val shelves = mutableListOf<MusicShelfRenderer>()
+        response.continuationContents?.musicPlaylistShelfContinuation?.let { shelves += it }
+        response.continuationContents?.musicShelfContinuation?.let { shelves += it }
+
+        val twoColumn = response.contents?.twoColumnBrowseResultsRenderer
+        val sectionLists = buildList {
+            twoColumn?.secondaryContents?.sectionListRenderer?.let(::add)
+            twoColumn?.tabs.orEmpty().forEach { tab -> tab.tabRenderer?.content?.sectionListRenderer?.let(::add) }
+            response.contents?.singleColumnBrowseResultsRenderer?.tabs.orEmpty()
+                .forEach { tab -> tab.tabRenderer?.content?.sectionListRenderer?.let(::add) }
+        }
+        for (sectionList in sectionLists) {
+            for (section in sectionList.contents) {
+                section.musicPlaylistShelfRenderer?.let { shelves += it }
+                section.musicShelfRenderer?.let { shelves += it }
+            }
+        }
+        return shelves
+    }
+
+    private fun collectBrowseItems(response: InnertubeBrowseResponse): List<MusicShelfItem> =
+        collectBrowseShelves(response).flatMap { it.contents } +
+            response.onResponseReceivedActions.flatMap {
+                it.appendContinuationItemsAction?.continuationItems.orEmpty()
+            }
+
+    private fun parseShelfItemToCollection(
+        renderer: MusicResponsiveListItemRenderer,
+        type: MediaCollectionType,
+    ): MediaCollection? {
+        val playlistId = renderer.overlay
+            ?.musicItemThumbnailOverlayRenderer
+            ?.content
+            ?.musicPlayButtonRenderer
+            ?.playNavigationEndpoint
+            ?.watchPlaylistEndpoint
+            ?.playlistId
+            ?.takeIf { it.isNotBlank() }
+            ?: renderer.navigationEndpoint
+                ?.browseEndpoint
+                ?.browseId
+                ?.takeIf { it.startsWith(PLAYLIST_BROWSE_PREFIX) }
+                ?.removePrefix(PLAYLIST_BROWSE_PREFIX)
+                ?.takeIf { it.isNotBlank() }
+            ?: return null
+
+        val title = renderer.flexColumns
+            .getOrNull(0)
+            ?.renderer
+            ?.text
+            ?.joinedText()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
+
+        val subtitleRuns = renderer.flexColumns
+            .getOrNull(1)
+            ?.renderer
+            ?.text
+            ?.runs
+            .orEmpty()
+        val subtitle = subtitleRuns.joinToString(separator = "") { it.text }.trim()
+        val subtitleParts = splitMetadataParts(subtitle)
+
+        val artistName = subtitleRuns
+            .filter { it.navigationEndpoint?.browseEndpoint?.pageType == PAGE_TYPE_ARTIST }
+            .joinToString(separator = ", ") { it.text.trim() }
+            .takeIf { it.isNotBlank() }
+            ?: when (type) {
+                // Album subtitles are "<Album|Single|EP> • <Artist> • <Year>"
+                MediaCollectionType.ALBUM -> subtitleParts.getOrNull(1)
+                // Playlist subtitles are "<Author> • <Views>"
+                MediaCollectionType.PLAYLIST -> subtitleParts.getOrNull(0)
+            }
+
+        val artworkUrl = renderer.thumbnail
+            ?.musicThumbnailRenderer
+            ?.thumbnail
+            ?.thumbnails
+            ?.maxByOrNull { it.width * it.height }
+            ?.url
+            ?.let(::upgradeArtworkUrlToHighRes)
+
+        return MediaCollection(
+            playlistId = playlistId,
+            title = title,
+            subtitle = subtitle,
+            type = type,
+            artistName = artistName,
+            artworkUrl = artworkUrl,
+            sourceType = MediaSourceType.YOUTUBE_MUSIC,
+        )
+    }
+
+    private fun splitMetadataParts(text: String): List<String> =
+        text.split(METADATA_SEPARATOR_REGEX)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
 
     private fun parseShelfItemToTrack(renderer: MusicResponsiveListItemRenderer): MediaTrack? {
         val videoId = renderer.playlistItemData?.videoId?.takeIf { it.isNotBlank() }
@@ -489,26 +704,35 @@ class YouTubeMusicProvider(
             ?.takeIf { it.isNotEmpty() }
             ?: return null
 
-        val metadataRuns = renderer.flexColumns
-            .getOrNull(1)
-            ?.renderer
-            ?.text
-            ?.runs
-            .orEmpty()
-            .map { it.text.trim() }
-            .filter { it.isNotEmpty() && it != "•" && it != "·" && it != "-" }
+        val metadataRuns = splitMetadataParts(
+            renderer.flexColumns
+                .getOrNull(1)
+                ?.renderer
+                ?.text
+                ?.joinedText()
+                .orEmpty(),
+        )
 
         val durationText = metadataRuns.lastOrNull { DURATION_TEXT_REGEX.matches(it) }
+            ?: renderer.fixedColumns
+                .firstNotNullOfOrNull { column ->
+                    column.renderer?.text?.joinedText()?.trim()?.takeIf { DURATION_TEXT_REGEX.matches(it) }
+                }
         val durationMs = durationText?.let(::parseDurationTextToMs) ?: 0L
 
-        val nonDurationParts = if (durationText != null) {
-            metadataRuns.dropLast(1)
-        } else {
-            metadataRuns
-        }
+        val nonDurationParts = metadataRuns.filterNot { DURATION_TEXT_REGEX.matches(it) }
 
         val artistName = nonDurationParts.firstOrNull()?.takeIf { it.isNotBlank() } ?: UNKNOWN_ARTIST
+        // Search rows carry "<Artist> • <Album> • <Duration>" in column 1, while album/playlist rows
+        // carry the artist in column 1 and the album in column 2.
         val albumName = nonDurationParts.getOrNull(1)?.takeIf { it.isNotBlank() }
+            ?: renderer.flexColumns
+                .getOrNull(2)
+                ?.renderer
+                ?.text
+                ?.joinedText()
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
 
         val artworkUrl = renderer.thumbnail
             ?.musicThumbnailRenderer
@@ -572,8 +796,14 @@ class YouTubeMusicProvider(
         const val DEFAULT_YT_BASE_URL = "https://www.youtube.com"
         const val ENDPOINT_SEARCH = "/youtubei/v1/search"
         const val ENDPOINT_PLAYER = "/youtubei/v1/player"
+        const val ENDPOINT_BROWSE = "/youtubei/v1/browse"
 
         private const val UNKNOWN_ARTIST = "Unknown Artist"
+        private const val PLAYLIST_BROWSE_PREFIX = "VL"
+        private const val PAGE_TYPE_ARTIST = "MUSIC_PAGE_TYPE_ARTIST"
+        private const val DISPLAY_POLICY_GREY_OUT = "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT"
+        private const val MAX_COLLECTION_PAGES = 30
+        private val METADATA_SEPARATOR_REGEX = Regex("""\s+[•·]\s+""")
         private val DURATION_TEXT_REGEX = Regex("""^\d{1,2}:\d{2}(?::\d{2})?$""")
         private val GOOGLE_LH3_SIZE_PARAM_REGEX = Regex("""=w\d+-h\d+[^/?#]*$""")
     }

@@ -87,6 +87,30 @@ data class MediaSearchPage(
 )
 
 /**
+ * Distinguishes official albums/singles/EPs from user or editorial playlists.
+ */
+enum class MediaCollectionType {
+    ALBUM,
+    PLAYLIST,
+}
+
+/**
+ * An ordered, playable group of tracks (an album or a playlist) discovered via search.
+ *
+ * [playlistId] identifies the underlying track list (e.g. `OLAK5uy_…` for YouTube Music albums
+ * or `PL…` for playlists) and is used to fetch the tracks that form an isolated playback queue.
+ */
+data class MediaCollection(
+    val playlistId: String,
+    val title: String,
+    val subtitle: String,
+    val type: MediaCollectionType,
+    val artistName: String? = null,
+    val artworkUrl: String? = null,
+    val sourceType: MediaSourceType,
+)
+
+/**
  * Contract for discovering, inspecting, and resolving playable audio streams from a media source.
  *
  * Implementations MUST propagate all network, cipher, permission, and storage errors upward

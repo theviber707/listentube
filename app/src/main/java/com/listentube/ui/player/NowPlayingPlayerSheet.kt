@@ -8,7 +8,6 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,9 +31,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CloudQueue
-import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.OndemandVideo
@@ -52,7 +48,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
@@ -69,7 +64,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -82,15 +76,13 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.listentube.domain.media.MediaTrack
-import com.listentube.domain.scrobble.ScrobbleManager
-import com.listentube.domain.scrobble.ScrobbleSessionState
 import com.listentube.ui.i18n.LocalAppStrings
 import java.util.Locale
 
 /**
  * Expandable Now Playing bottom sheet supporting both high-resolution audio artwork
  * ([PlayerRenderMode.AUDIO_ARTWORK]) and live Media3 video surface rendering
- * ([PlayerRenderMode.VIDEO_SURFACE]), along with real-time ListenBrainz scrobble threshold telemetry.
+ * ([PlayerRenderMode.VIDEO_SURFACE]), along with the playback queue.
  */
 @kotlin.OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -197,7 +189,6 @@ fun NowPlayingSheetContent(
                         PlayerRenderMode.AUDIO_ARTWORK -> {
                             AudioArtworkViewport(
                                 track = track,
-                                isPlaying = uiState.isPlaying,
                             )
                         }
 
@@ -238,32 +229,14 @@ fun NowPlayingSheetContent(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-
-                    val hasActiveStatus = !uiState.scrobblingEnabled ||
-                        uiState.scrobbleSession.scrobbleCompleted ||
-                        uiState.scrobbleSession.playingNowDispatched ||
-                        uiState.queuedPlayingNow != null ||
-                        (uiState.scrobbleSession.isEligibleForScrobble && uiState.scrobbleSession.thresholdMs > 0L)
-
-                    if (hasActiveStatus) {
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        ListenBrainzLiveStatusPill(
-                            sessionState = uiState.scrobbleSession,
-                            queuedPlayingNowPresent = uiState.queuedPlayingNow != null,
-                            scrobblingEnabled = uiState.scrobblingEnabled,
-                        )
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Seekbar with Scrobble Threshold Marker
+                // Seekbar
                 PlaybackSeekBar(
                     currentPositionMs = uiState.currentPositionMs,
                     durationMs = uiState.durationMs.coerceAtLeast(track.durationMs),
-                    scrobbleThresholdMs = uiState.scrobbleSession.thresholdMs.takeIf { it > 0L }
-                        ?: ScrobbleManager.calculateThresholdMs(uiState.durationMs.coerceAtLeast(track.durationMs)),
                     onSeekTo = onSeekTo,
                 )
 
@@ -398,18 +371,11 @@ private fun RenderModeToggleBar(
 @Composable
 private fun AudioArtworkViewport(
     track: MediaTrack,
-    isPlaying: Boolean,
 ) {
-    val artworkScale by animateFloatAsState(
-        targetValue = if (isPlaying) 1.0f else 0.92f,
-        label = "ArtworkScale",
-    )
-
     Surface(
         modifier = Modifier
             .fillMaxWidth(0.82f)
-            .aspectRatio(1f)
-            .scale(artworkScale),
+            .aspectRatio(1f),
         shape = RoundedCornerShape(24.dp),
         tonalElevation = 8.dp,
         shadowElevation = 12.dp,
@@ -503,107 +469,12 @@ private fun VideoSurfaceViewport(
     }
 }
 
-/**
- * Displays live ListenBrainz status for the currently playing track (`playing_now` state
- * and exact duration threshold progress toward completed scrobble).
- */
-@Composable
-private fun ListenBrainzLiveStatusPill(
-    sessionState: ScrobbleSessionState,
-    queuedPlayingNowPresent: Boolean,
-    scrobblingEnabled: Boolean,
-) {
-    val strings = LocalAppStrings.current
-
-    if (!scrobblingEnabled) {
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-        ) {
-            Text(
-                text = strings.lbStatusScrobblingPaused,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            )
-        }
-        return
-    }
-
-    val containerColor = when {
-        sessionState.scrobbleCompleted -> MaterialTheme.colorScheme.primaryContainer
-        sessionState.playingNowDispatched -> MaterialTheme.colorScheme.secondaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
-
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = containerColor,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(
-                        imageVector = if (sessionState.scrobbleCompleted) {
-                            Icons.Default.CheckCircle
-                        } else {
-                            Icons.Default.CloudQueue
-                        },
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    val statusLabel = when {
-                        sessionState.scrobbleCompleted -> strings.lbStatusScrobbled
-                        sessionState.playingNowDispatched -> strings.lbStatusPlayingNowActive
-                        queuedPlayingNowPresent -> strings.lbStatusPlayingNowQueuedOffline
-                        else -> strings.lbStatusTrackingDuration
-                    }
-                    Text(
-                        text = statusLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-
-                if (sessionState.isEligibleForScrobble && sessionState.thresholdMs > 0L) {
-                    Text(
-                        text = "${formatDurationMs(sessionState.accumulatedPlayedMs)} / ${formatDurationMs(sessionState.thresholdMs)}",
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-            }
-
-            if (sessionState.isEligibleForScrobble && sessionState.thresholdMs > 0L && !sessionState.scrobbleCompleted) {
-                Spacer(modifier = Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = { sessionState.progressFraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp)),
-                )
-            }
-        }
-    }
-}
-
 @Composable
 private fun PlaybackSeekBar(
     currentPositionMs: Long,
     durationMs: Long,
-    scrobbleThresholdMs: Long,
     onSeekTo: (Long) -> Unit,
 ) {
-    val strings = LocalAppStrings.current
     val safeDurationMs = durationMs.coerceAtLeast(1L)
     var isDragging by remember { mutableStateOf(false) }
     var dragPositionMs by remember { mutableFloatStateOf(0f) }
@@ -638,13 +509,6 @@ private fun PlaybackSeekBar(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (scrobbleThresholdMs in 1L..safeDurationMs) {
-                Text(
-                    text = strings.scrobbleAtTime(formatDurationMs(scrobbleThresholdMs)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
             Text(
                 text = formatDurationMs(durationMs),
                 style = MaterialTheme.typography.labelSmall,

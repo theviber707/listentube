@@ -19,6 +19,8 @@ import com.listentube.data.listenbrainz.local.QueuedScrobbleEntity
 import com.listentube.data.listenbrainz.model.RateLimitInfo
 import com.listentube.data.listenbrainz.remote.ListenBrainzApiClient
 import com.listentube.data.localmedia.LocalMediaStoreProvider
+import com.listentube.domain.media.MediaCollection
+import com.listentube.domain.media.MediaCollectionType
 import com.listentube.domain.media.MediaSourceType
 import com.listentube.domain.media.MediaTrack
 import com.listentube.domain.scrobble.ScrobbleManager
@@ -29,6 +31,8 @@ import com.listentube.service.playback.toMediaItem
 import com.listentube.ui.i18n.AppLocale
 import com.listentube.ui.i18n.stringsForLocale
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -65,14 +69,24 @@ data class PlayerUiState(
     val currentLocale: AppLocale = AppLocale.fromLocale(),
 
     // Search & Library State
+    val isSearchActive: Boolean = false,
     val searchQuery: String = "",
+    val submittedSearchQuery: String? = null,
     val isSearching: Boolean = false,
     val isLoadingMoreSearch: Boolean = false,
     val searchResults: List<MediaTrack> = emptyList(),
+    val searchAlbums: List<MediaCollection> = emptyList(),
+    val searchPlaylists: List<MediaCollection> = emptyList(),
     val searchContinuationToken: String? = null,
     val localTracks: List<MediaTrack> = emptyList(),
     val localFilterQuery: String = "",
     val isLoadingLocalTracks: Boolean = false,
+
+    // Album / Playlist Detail State
+    val openCollection: MediaCollection? = null,
+    val collectionTracks: List<MediaTrack> = emptyList(),
+    val isLoadingCollection: Boolean = false,
+    val pendingPlayCollectionId: String? = null,
 
     // Active Playback & Queue State
     val currentTrack: MediaTrack? = null,
@@ -295,6 +309,17 @@ class PlayerViewModel(
         _uiState.update { it.copy(searchQuery = query) }
     }
 
+    /**
+     * Shows or hides the top app bar search field (LibreTube-style search icon).
+     */
+    fun setSearchActive(active: Boolean) {
+        _uiState.update { it.copy(isSearchActive = active) }
+    }
+
+    /**
+     * Searches YouTube Music for songs, albums, and playlists in parallel so albums such as
+     * "The Wall" can be found and played as a self-contained queue.
+     */
     fun submitSearch() {
         val query = _uiState.value.searchQuery.trim()
         if (query.isEmpty()) return
@@ -302,30 +327,38 @@ class PlayerViewModel(
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
+                    currentDestination = MainDestination.EXPLORE,
+                    submittedSearchQuery = query,
                     isSearching = true,
                     activeError = null,
                     searchContinuationToken = null,
+                    openCollection = null,
+                    collectionTracks = emptyList(),
                 )
             }
-            when (val result = youTubeMusicProvider.searchTracks(query = query, continuationToken = null)) {
-                is AppResult.Success -> {
-                    _uiState.update {
-                        it.copy(
-                            isSearching = false,
-                            searchResults = result.data.tracks,
-                            searchContinuationToken = result.data.continuationToken,
-                        )
-                    }
-                }
 
-                is AppResult.Failure -> {
-                    _uiState.update {
-                        it.copy(
-                            isSearching = false,
-                            activeError = result.error,
-                        )
-                    }
-                }
+            val (songsResult, albumsResult, playlistsResult) = coroutineScope {
+                val songs = async { youTubeMusicProvider.searchTracks(query = query, continuationToken = null) }
+                val albums = async { youTubeMusicProvider.searchCollections(query, MediaCollectionType.ALBUM) }
+                val playlists = async { youTubeMusicProvider.searchCollections(query, MediaCollectionType.PLAYLIST) }
+                Triple(songs.await(), albums.await(), playlists.await())
+            }
+
+            // Stale response guard: user may have submitted another query meanwhile.
+            if (_uiState.value.submittedSearchQuery != query) return@launch
+
+            val firstError = listOf(songsResult, albumsResult, playlistsResult)
+                .firstNotNullOfOrNull { it.errorOrNull() }
+
+            _uiState.update {
+                it.copy(
+                    isSearching = false,
+                    searchResults = songsResult.getOrNull()?.tracks.orEmpty(),
+                    searchContinuationToken = songsResult.getOrNull()?.continuationToken,
+                    searchAlbums = albumsResult.getOrNull().orEmpty(),
+                    searchPlaylists = playlistsResult.getOrNull().orEmpty(),
+                    activeError = firstError,
+                )
             }
         }
     }
@@ -339,7 +372,7 @@ class PlayerViewModel(
             _uiState.update { it.copy(isLoadingMoreSearch = true) }
             when (
                 val result = youTubeMusicProvider.searchTracks(
-                    query = state.searchQuery,
+                    query = state.submittedSearchQuery ?: state.searchQuery,
                     continuationToken = continuation,
                 )
             ) {
@@ -393,6 +426,125 @@ class PlayerViewModel(
                             activeError = result.error,
                         )
                     }
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Album & Playlist Collection Actions
+    // -------------------------------------------------------------------------
+
+    fun openCollection(collection: MediaCollection) {
+        _uiState.update {
+            it.copy(
+                openCollection = collection,
+                collectionTracks = emptyList(),
+                isLoadingCollection = true,
+                activeError = null,
+            )
+        }
+        viewModelScope.launch {
+            when (val result = youTubeMusicProvider.getCollectionTracks(collection)) {
+                is AppResult.Success -> {
+                    _uiState.update {
+                        if (it.openCollection?.playlistId == collection.playlistId) {
+                            it.copy(
+                                collectionTracks = result.data,
+                                isLoadingCollection = false,
+                            )
+                        } else it
+                    }
+                }
+
+                is AppResult.Failure -> {
+                    _uiState.update {
+                        if (it.openCollection?.playlistId == collection.playlistId) {
+                            it.copy(
+                                isLoadingCollection = false,
+                                activeError = result.error,
+                            )
+                        } else it
+                    }
+                }
+            }
+        }
+    }
+
+    fun closeCollection() {
+        _uiState.update {
+            it.copy(
+                openCollection = null,
+                collectionTracks = emptyList(),
+                isLoadingCollection = false,
+            )
+        }
+    }
+
+    fun playCollection(collection: MediaCollection, startIndex: Int = 0) {
+        val currentOpen = _uiState.value.openCollection
+        val loadedTracks = if (currentOpen?.playlistId == collection.playlistId) {
+            _uiState.value.collectionTracks
+        } else emptyList()
+
+        if (loadedTracks.isNotEmpty()) {
+            val clampedIndex = startIndex.coerceIn(loadedTracks.indices)
+            playTrack(
+                track = loadedTracks[clampedIndex],
+                queueContext = loadedTracks,
+                expandSheet = true,
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(pendingPlayCollectionId = collection.playlistId, activeError = null) }
+            when (val result = youTubeMusicProvider.getCollectionTracks(collection)) {
+                is AppResult.Success -> {
+                    val tracks = result.data
+                    _uiState.update { it.copy(pendingPlayCollectionId = null) }
+                    if (tracks.isNotEmpty()) {
+                        val clampedIndex = startIndex.coerceIn(tracks.indices)
+                        playTrack(
+                            track = tracks[clampedIndex],
+                            queueContext = tracks,
+                            expandSheet = true,
+                        )
+                    }
+                }
+
+                is AppResult.Failure -> {
+                    _uiState.update {
+                        it.copy(
+                            pendingPlayCollectionId = null,
+                            activeError = result.error,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun addCollectionToQueue(collection: MediaCollection) {
+        viewModelScope.launch {
+            when (val result = youTubeMusicProvider.getCollectionTracks(collection)) {
+                is AppResult.Success -> {
+                    val tracks = result.data
+                    if (tracks.isNotEmpty()) {
+                        val player = _connectedPlayer.value
+                        tracks.forEach { player?.addMediaItem(it.toMediaItem()) }
+                        _uiState.update { current ->
+                            val strings = stringsForLocale(current.currentLocale)
+                            current.copy(
+                                playbackQueue = current.playbackQueue + tracks,
+                                statusBannerMessage = strings.statusAddedToQueue(collection.title),
+                            )
+                        }
+                    }
+                }
+
+                is AppResult.Failure -> {
+                    _uiState.update { it.copy(activeError = result.error) }
                 }
             }
         }

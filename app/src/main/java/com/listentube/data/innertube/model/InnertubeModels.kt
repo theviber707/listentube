@@ -231,8 +231,28 @@ data class InnertubeSearchRequest(
          * Protobuf-encoded filter restricting YouTube Music search results to "Songs".
          */
         const val SONGS_FILTER_PARAMS = "EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D"
+
+        /**
+         * Protobuf-encoded filter restricting YouTube Music search results to "Albums".
+         */
+        const val ALBUMS_FILTER_PARAMS = "EgWKAQIYAWoKEAkQAxAEEAkQBQ%3D%3D"
+
+        /**
+         * Protobuf-encoded filter restricting YouTube Music search results to "Community playlists".
+         */
+        const val PLAYLISTS_FILTER_PARAMS = "EgeKAQQoAEABagoQAxAEEAoQCRAF"
     }
 }
+
+@Serializable
+data class InnertubeBrowseRequest(
+    @SerialName("context")
+    val context: InnertubeContext,
+    @SerialName("browseId")
+    val browseId: String? = null,
+    @SerialName("continuation")
+    val continuation: String? = null,
+)
 
 // =============================================================================
 // Innertube `/youtubei/v1/player` Response Models
@@ -478,12 +498,16 @@ data class SectionListRenderer(
 data class SectionContent(
     @SerialName("musicShelfRenderer")
     val musicShelfRenderer: MusicShelfRenderer? = null,
+    @SerialName("musicPlaylistShelfRenderer")
+    val musicPlaylistShelfRenderer: MusicShelfRenderer? = null,
 )
 
 @Serializable
 data class ContinuationContents(
     @SerialName("musicShelfContinuation")
     val musicShelfContinuation: MusicShelfRenderer? = null,
+    @SerialName("musicPlaylistShelfContinuation")
+    val musicPlaylistShelfContinuation: MusicShelfRenderer? = null,
 )
 
 @Serializable
@@ -510,18 +534,50 @@ data class NextContinuationData(
 data class MusicShelfItem(
     @SerialName("musicResponsiveListItemRenderer")
     val musicResponsiveListItemRenderer: MusicResponsiveListItemRenderer? = null,
+    @SerialName("continuationItemRenderer")
+    val continuationItemRenderer: ContinuationItemRenderer? = null,
+)
+
+@Serializable
+data class ContinuationItemRenderer(
+    @SerialName("continuationEndpoint")
+    val continuationEndpoint: ContinuationEndpoint? = null,
+)
+
+@Serializable
+data class ContinuationEndpoint(
+    @SerialName("continuationCommand")
+    val continuationCommand: ContinuationCommand? = null,
+)
+
+@Serializable
+data class ContinuationCommand(
+    @SerialName("token")
+    val token: String? = null,
 )
 
 @Serializable
 data class MusicResponsiveListItemRenderer(
     @SerialName("flexColumns")
     val flexColumns: List<MusicResponsiveFlexColumn> = emptyList(),
+    @SerialName("fixedColumns")
+    val fixedColumns: List<MusicResponsiveFixedColumn> = emptyList(),
     @SerialName("playlistItemData")
     val playlistItemData: PlaylistItemData? = null,
     @SerialName("overlay")
     val overlay: MusicItemOverlay? = null,
     @SerialName("thumbnail")
     val thumbnail: MusicThumbnailRendererContainer? = null,
+    @SerialName("navigationEndpoint")
+    val navigationEndpoint: NavigationEndpoint? = null,
+    @SerialName("musicItemRendererDisplayPolicy")
+    val musicItemRendererDisplayPolicy: String? = null,
+)
+
+@Serializable
+data class MusicResponsiveFixedColumn(
+    @SerialName("musicResponsiveListItemFixedColumnRenderer")
+    val renderer: FlexColumnRenderer? = null,
 )
 
 @Serializable
@@ -598,6 +654,8 @@ data class TextRun(
 data class NavigationEndpoint(
     @SerialName("watchEndpoint")
     val watchEndpoint: WatchEndpoint? = null,
+    @SerialName("watchPlaylistEndpoint")
+    val watchPlaylistEndpoint: WatchEndpoint? = null,
     @SerialName("browseEndpoint")
     val browseEndpoint: BrowseEndpoint? = null,
 )
@@ -614,4 +672,65 @@ data class WatchEndpoint(
 data class BrowseEndpoint(
     @SerialName("browseId")
     val browseId: String? = null,
+    @SerialName("browseEndpointContextSupportedConfigs")
+    val browseEndpointContextSupportedConfigs: BrowseEndpointContextSupportedConfigs? = null,
+) {
+    val pageType: String?
+        get() = browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType
+}
+
+@Serializable
+data class BrowseEndpointContextSupportedConfigs(
+    @SerialName("browseEndpointContextMusicConfig")
+    val browseEndpointContextMusicConfig: BrowseEndpointContextMusicConfig? = null,
+)
+
+@Serializable
+data class BrowseEndpointContextMusicConfig(
+    @SerialName("pageType")
+    val pageType: String? = null,
+)
+
+// =============================================================================
+// Innertube `/youtubei/v1/browse` Response Models (albums & playlists)
+// =============================================================================
+
+@Serializable
+data class InnertubeBrowseResponse(
+    @SerialName("responseContext")
+    val responseContext: InnertubeResponseContext? = null,
+    @SerialName("contents")
+    val contents: BrowseContents? = null,
+    @SerialName("continuationContents")
+    val continuationContents: ContinuationContents? = null,
+    @SerialName("onResponseReceivedActions")
+    val onResponseReceivedActions: List<ResponseReceivedAction> = emptyList(),
+)
+
+@Serializable
+data class BrowseContents(
+    @SerialName("twoColumnBrowseResultsRenderer")
+    val twoColumnBrowseResultsRenderer: TwoColumnBrowseResultsRenderer? = null,
+    @SerialName("singleColumnBrowseResultsRenderer")
+    val singleColumnBrowseResultsRenderer: TabbedSearchResultsRenderer? = null,
+)
+
+@Serializable
+data class TwoColumnBrowseResultsRenderer(
+    @SerialName("tabs")
+    val tabs: List<SearchTab> = emptyList(),
+    @SerialName("secondaryContents")
+    val secondaryContents: TabContent? = null,
+)
+
+@Serializable
+data class ResponseReceivedAction(
+    @SerialName("appendContinuationItemsAction")
+    val appendContinuationItemsAction: AppendContinuationItemsAction? = null,
+)
+
+@Serializable
+data class AppendContinuationItemsAction(
+    @SerialName("continuationItems")
+    val continuationItems: List<MusicShelfItem> = emptyList(),
 )
