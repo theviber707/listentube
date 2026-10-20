@@ -8,6 +8,16 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -64,7 +74,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -189,6 +202,7 @@ fun NowPlayingSheetContent(
                         PlayerRenderMode.AUDIO_ARTWORK -> {
                             AudioArtworkViewport(
                                 track = track,
+                                isPlaying = uiState.isPlaying,
                             )
                         }
 
@@ -366,40 +380,124 @@ private fun RenderModeToggleBar(
 }
 
 /**
- * Renders the album cover artwork with subtle play-state scale animation and a fallback icon.
+ * Renders the album cover artwork with an ambient audio visualizer radiating behind it.
  */
 @Composable
 private fun AudioArtworkViewport(
     track: MediaTrack,
+    isPlaying: Boolean,
 ) {
-    Surface(
+    Box(
         modifier = Modifier
-            .fillMaxWidth(0.82f)
+            .fillMaxWidth()
             .aspectRatio(1f),
-        shape = RoundedCornerShape(24.dp),
-        tonalElevation = 8.dp,
-        shadowElevation = 12.dp,
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentAlignment = Alignment.Center,
     ) {
-        if (!track.artworkUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = track.artworkUrl,
-                contentDescription = track.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = null,
-                    modifier = Modifier.size(96.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        AudioVisualizerBehindCover(
+            isPlaying = isPlaying,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.78f)
+                .aspectRatio(1f),
+            shape = RoundedCornerShape(24.dp),
+            tonalElevation = 8.dp,
+            shadowElevation = 12.dp,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            if (!track.artworkUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = track.artworkUrl,
+                    contentDescription = track.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
                 )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = null,
+                        modifier = Modifier.size(96.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
+        }
+    }
+}
+
+/**
+ * Animated audio spectrum visualizer radiating outward from behind the album art card perimeter.
+ * Responds smoothly to [isPlaying], shrinking down when playback is paused.
+ */
+@Composable
+private fun AudioVisualizerBehindCover(
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+    barCount: Int = 48,
+    primaryColor: Color = MaterialTheme.colorScheme.primary,
+    accentColor: Color = MaterialTheme.colorScheme.tertiary,
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "VisualizerTransition")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "VisualizerPhase",
+    )
+
+    val activeMultiplier by animateFloatAsState(
+        targetValue = if (isPlaying) 1f else 0.06f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "VisualizerActiveMultiplier",
+    )
+
+    Canvas(modifier = modifier) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val coverHalfWidth = (size.width * 0.78f) / 2f
+
+        for (i in 0 until barCount) {
+            val angle = (i.toFloat() / barCount) * (2f * Math.PI.toFloat())
+            val cosA = kotlin.math.cos(angle)
+            val sinA = kotlin.math.sin(angle)
+            val maxCosSin = maxOf(kotlin.math.abs(cosA), kotlin.math.abs(sinA)).coerceAtLeast(0.001f)
+            val baseRadius = (coverHalfWidth / maxCosSin) * 0.94f
+
+            val bass = kotlin.math.sin(phase * 2.2f + i * 0.28f)
+            val mid = kotlin.math.sin(phase * 3.8f - i * 0.42f)
+            val treble = kotlin.math.cos(phase * 5.4f + i * 0.65f)
+            val harmonic = (bass * 0.5f + mid * 0.35f + treble * 0.15f)
+            val normalizedHarmonic = ((harmonic + 1f) / 2f).coerceIn(0f, 1f)
+
+            val minHeightPx = 3.dp.toPx()
+            val maxHeightPx = 26.dp.toPx()
+            val dynamicHeight = (minHeightPx + (maxHeightPx - minHeightPx) * normalizedHarmonic) * activeMultiplier
+
+            val startX = center.x + cosA * baseRadius
+            val startY = center.y + sinA * baseRadius
+            val endX = center.x + cosA * (baseRadius + dynamicHeight)
+            val endY = center.y + sinA * (baseRadius + dynamicHeight)
+
+            val t = ((kotlin.math.sin(angle + phase * 0.5f) + 1f) / 2f).coerceIn(0f, 1f)
+            val barColor = lerp(primaryColor, accentColor, t).copy(
+                alpha = (0.55f + 0.45f * normalizedHarmonic) * activeMultiplier.coerceAtLeast(0.2f),
+            )
+
+            drawLine(
+                color = barColor,
+                start = Offset(startX, startY),
+                end = Offset(endX, endY),
+                strokeWidth = 4.5.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
         }
     }
 }
