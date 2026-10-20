@@ -31,7 +31,7 @@ jobs:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
         run: |
           if [ -n "$SIGNING_KEY" ]; then
-            echo "$SIGNING_KEY" | base64 -d > app/release.keystore
+            printf '%s' "$SIGNING_KEY" | tr -d '[:space:]' | base64 -d > app/release.keystore
             echo "Release keystore decoded successfully."
           else
             echo "::warning::No release keystore secret found (SIGNING_KEY). Falling back to debug signing."
