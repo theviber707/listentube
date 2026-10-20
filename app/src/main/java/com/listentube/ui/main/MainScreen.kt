@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Close
@@ -33,7 +34,6 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SkipNext
@@ -616,7 +616,7 @@ private fun TrackListItem(
 
             IconButton(onClick = onEnqueue) {
                 Icon(
-                    imageVector = Icons.Default.PlaylistAdd,
+                    imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
                     contentDescription = strings.cdAddToQueue,
                 )
             }

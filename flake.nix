@@ -71,7 +71,7 @@
             env = {
               ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
               ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
-              GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMaven=true";
+              GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=${androidSdk}/libexec/android-sdk/build-tools/35.0.0/aapt2";
               LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath emulatorLibs}";
               JAVA_HOME = "${jdk.home}";
               QT_QPA_PLATFORM = "xcb";

@@ -472,7 +472,7 @@ interface ScrobbleDao {
 @Database(
     entities = [QueuedScrobbleEntity::class],
     version = 1,
-    exportSchema = true,
+    exportSchema = false,
 )
 @TypeConverters(ScrobbleTypeConverters::class)
 abstract class ScrobbleDatabase : RoomDatabase() {
