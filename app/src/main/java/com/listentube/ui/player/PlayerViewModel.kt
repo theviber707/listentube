@@ -61,6 +61,16 @@ enum class MainDestination {
 }
 
 /**
+ * Representation of a detected local audio directory with track count and inclusion state.
+ */
+data class LocalAudioFolder(
+    val path: String,
+    val name: String,
+    val trackCount: Int,
+    val isIncluded: Boolean,
+)
+
+/**
  * Immutable UI state snapshot consumed by `MainScreen`, `NowPlayingPlayerSheet`,
  * and `ScrobbleQueueScreen`.
  */
@@ -78,9 +88,15 @@ data class PlayerUiState(
     val searchAlbums: List<MediaCollection> = emptyList(),
     val searchPlaylists: List<MediaCollection> = emptyList(),
     val searchContinuationToken: String? = null,
+
+    // Local Storage State & Folder Selection
+    val allLocalTracks: List<MediaTrack> = emptyList(),
     val localTracks: List<MediaTrack> = emptyList(),
     val localFilterQuery: String = "",
     val isLoadingLocalTracks: Boolean = false,
+    val discoveredFolders: List<LocalAudioFolder> = emptyList(),
+    val excludedFolderPaths: Set<String> = emptySet(),
+    val isFolderFilterSheetVisible: Boolean = false,
 
     // Album / Playlist Detail State
     val openCollection: MediaCollection? = null,
@@ -125,7 +141,11 @@ data class PlayerUiState(
 ) {
     val filteredLocalTracks: List<MediaTrack>
         get() {
-            val q = localFilterQuery.trim()
+            val q = if (currentDestination == MainDestination.LOCAL_LIBRARY && isSearchActive) {
+                searchQuery.trim()
+            } else {
+                localFilterQuery.trim()
+            }
             if (q.isEmpty()) return localTracks
             return localTracks.filter { track ->
                 track.title.contains(q, ignoreCase = true) ||
@@ -136,7 +156,8 @@ data class PlayerUiState(
 }
 
 /**
- * Abstraction for reading and persisting the user's ListenBrainz token and scrobble preferences.
+ * Abstraction for reading and persisting the user's ListenBrainz token, scrobble preferences,
+ * and excluded local storage folders.
  */
 interface ScrobblePreferencesStore {
     suspend fun getUserToken(): String?
@@ -144,6 +165,8 @@ interface ScrobblePreferencesStore {
     suspend fun getValidatedUserName(): String?
     suspend fun isScrobblingEnabled(): Boolean
     suspend fun setScrobblingEnabled(enabled: Boolean)
+    suspend fun getExcludedFolders(): Set<String>?
+    suspend fun setExcludedFolders(folders: Set<String>)
 }
 
 /**
@@ -162,6 +185,9 @@ class InMemoryScrobblePreferencesStore(
     @Volatile
     private var enabled: Boolean = initialEnabled
 
+    @Volatile
+    private var excludedFolders: Set<String>? = null
+
     override suspend fun getUserToken(): String? = token
 
     override suspend fun setUserToken(token: String, validatedUserName: String?) {
@@ -175,6 +201,12 @@ class InMemoryScrobblePreferencesStore(
 
     override suspend fun setScrobblingEnabled(enabled: Boolean) {
         this.enabled = enabled
+    }
+
+    override suspend fun getExcludedFolders(): Set<String>? = excludedFolders
+
+    override suspend fun setExcludedFolders(folders: Set<String>) {
+        this.excludedFolders = folders
     }
 }
 
@@ -285,8 +317,8 @@ class PlayerViewModel(
     }
 
     fun selectDestination(destination: MainDestination) {
-        _uiState.update { it.copy(currentDestination = destination) }
-        if (destination == MainDestination.LOCAL_LIBRARY && _uiState.value.localTracks.isEmpty()) {
+        _uiState.update { it.copy(currentDestination = destination, isSearchActive = false) }
+        if (destination == MainDestination.LOCAL_LIBRARY && _uiState.value.allLocalTracks.isEmpty()) {
             loadLocalLibraryTracks()
         }
     }
@@ -323,6 +355,9 @@ class PlayerViewModel(
     fun submitSearch() {
         val query = _uiState.value.searchQuery.trim()
         if (query.isEmpty()) return
+        if (_uiState.value.currentDestination == MainDestination.LOCAL_LIBRARY) {
+            return
+        }
 
         viewModelScope.launch {
             _uiState.update {
@@ -409,12 +444,46 @@ class PlayerViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingLocalTracks = true, activeError = null) }
-            when (val result = localMediaStoreProvider.getLibraryTracks(limit = 500, offset = 0)) {
+            when (val result = localMediaStoreProvider.getLibraryTracks(limit = 10_000, offset = 0)) {
                 is AppResult.Success -> {
+                    val rawTracks = result.data
+                    val savedExcluded = preferencesStore.getExcludedFolders()
+
+                    val folderMap = linkedMapOf<String, MutableList<MediaTrack>>()
+                    for (track in rawTracks) {
+                        val key = track.folderPath ?: "Unknown"
+                        folderMap.getOrPut(key) { mutableListOf() }.add(track)
+                    }
+
+                    val effectiveExcluded = if (savedExcluded != null) {
+                        savedExcluded
+                    } else {
+                        // Default exclusion: exclude junk audio folders like WhatsApp, Telegram, etc.
+                        folderMap.keys.filter { folderPath ->
+                            val folderName = folderMap[folderPath]?.firstOrNull()?.folderName ?: folderPath
+                            LocalMediaStoreProvider.isJunkAudioFolder(folderPath, folderName)
+                        }.toSet()
+                    }
+
+                    val folders = folderMap.map { (path, tracksInFolder) ->
+                        val name = tracksInFolder.firstOrNull()?.folderName ?: path.substringAfterLast('/')
+                        LocalAudioFolder(
+                            path = path,
+                            name = name,
+                            trackCount = tracksInFolder.size,
+                            isIncluded = path !in effectiveExcluded,
+                        )
+                    }.sortedByDescending { it.trackCount }
+
+                    val filteredTracks = rawTracks.filter { it.folderPath !in effectiveExcluded }
+
                     _uiState.update {
                         it.copy(
                             isLoadingLocalTracks = false,
-                            localTracks = result.data,
+                            allLocalTracks = rawTracks,
+                            localTracks = filteredTracks,
+                            discoveredFolders = folders,
+                            excludedFolderPaths = effectiveExcluded,
                         )
                     }
                 }
@@ -427,6 +496,49 @@ class PlayerViewModel(
                         )
                     }
                 }
+            }
+        }
+    }
+
+    fun setFolderFilterSheetVisible(visible: Boolean) {
+        _uiState.update { it.copy(isFolderFilterSheetVisible = visible) }
+        if (visible && _uiState.value.allLocalTracks.isEmpty()) {
+            loadLocalLibraryTracks()
+        }
+    }
+
+    fun toggleFolderInclusion(folderPath: String) {
+        val currentExcluded = _uiState.value.excludedFolderPaths
+        val newExcluded = if (folderPath in currentExcluded) {
+            currentExcluded - folderPath
+        } else {
+            currentExcluded + folderPath
+        }
+        applyExcludedFolders(newExcluded)
+    }
+
+    fun setAllFoldersIncluded(included: Boolean) {
+        val newExcluded = if (included) {
+            emptySet()
+        } else {
+            _uiState.value.discoveredFolders.map { it.path }.toSet()
+        }
+        applyExcludedFolders(newExcluded)
+    }
+
+    private fun applyExcludedFolders(newExcluded: Set<String>) {
+        viewModelScope.launch {
+            preferencesStore.setExcludedFolders(newExcluded)
+            _uiState.update { state ->
+                val updatedFolders = state.discoveredFolders.map { folder ->
+                    folder.copy(isIncluded = folder.path !in newExcluded)
+                }
+                val updatedTracks = state.allLocalTracks.filter { it.folderPath !in newExcluded }
+                state.copy(
+                    excludedFolderPaths = newExcluded,
+                    discoveredFolders = updatedFolders,
+                    localTracks = updatedTracks,
+                )
             }
         }
     }

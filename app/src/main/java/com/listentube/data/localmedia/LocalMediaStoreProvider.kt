@@ -240,6 +240,17 @@ class LocalMediaStoreProvider(
         val yearCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
         val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
         val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+        val dataCol = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+        val bucketCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            cursor.getColumnIndex(MediaStore.Audio.Media.BUCKET_DISPLAY_NAME)
+        } else {
+            -1
+        }
+        val relativeCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+        } else {
+            -1
+        }
         val bitrateCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             cursor.getColumnIndex(MediaStore.Audio.Media.BITRATE)
         } else {
@@ -266,6 +277,19 @@ class LocalMediaStoreProvider(
                 null
             }
 
+            val dataPath = if (dataCol >= 0 && !cursor.isNull(dataCol)) cursor.getString(dataCol)?.trim() else null
+            val rawBucket = if (bucketCol >= 0 && !cursor.isNull(bucketCol)) cursor.getString(bucketCol)?.trim() else null
+            val rawRelative = if (relativeCol >= 0 && !cursor.isNull(relativeCol)) cursor.getString(relativeCol)?.trim() else null
+
+            val resolvedFolderPath = dataPath?.let { java.io.File(it).parent }
+                ?: rawRelative?.trimEnd('/')
+                ?: rawBucket
+                ?: "Music"
+            val resolvedFolderName = rawBucket
+                ?: rawRelative?.trim('/')?.substringAfterLast('/')
+                ?: dataPath?.let { java.io.File(it).parentFile?.name }
+                ?: "Music"
+
             val contentUri = ContentUris.withAppendedId(collectionUri, id).toString()
             val artworkUri = if (albumId > 0L) {
                 ContentUris.withAppendedId(ALBUM_ART_BASE_URI, albumId).toString()
@@ -291,6 +315,8 @@ class LocalMediaStoreProvider(
                 mimeType = mimeType,
                 bitrateBps = bitrateBps,
                 fileSizeBytes = sizeBytes,
+                folderPath = resolvedFolderPath,
+                folderName = resolvedFolderName,
             )
             count += 1
         } while (count < limit && cursor.moveToNext())
@@ -310,7 +336,12 @@ class LocalMediaStoreProvider(
             MediaStore.Audio.Media.YEAR,
             MediaStore.Audio.Media.MIME_TYPE,
             MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.DATA,
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            baseColumns += MediaStore.Audio.Media.BUCKET_DISPLAY_NAME
+            baseColumns += MediaStore.Audio.Media.RELATIVE_PATH
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             baseColumns += MediaStore.Audio.Media.BITRATE
         }
@@ -350,7 +381,30 @@ class LocalMediaStoreProvider(
         const val DEFAULT_AUDIO_MIME_TYPE = "audio/*"
         private const val UNKNOWN_ARTIST = "Unknown Artist"
 
-        private val ALBUM_ART_BASE_URI: Uri =
+        private val ALBUM_ART_BASE_URI: Uri by lazy {
             Uri.parse("content://media/external/audio/albumart")
+        }
+
+        /**
+         * Identifies default junk audio directories (WhatsApp voice notes, call recordings, ringtones, etc.)
+         * so the local library excludes them out of the box unless explicitly enabled by the user.
+         */
+        fun isJunkAudioFolder(folderPath: String, folderName: String): Boolean {
+            val lowerPath = folderPath.lowercase()
+            val lowerName = folderName.lowercase()
+            return lowerPath.contains("whatsapp") ||
+                lowerName.contains("whatsapp") ||
+                lowerPath.contains("telegram") ||
+                lowerName.contains("telegram") ||
+                lowerPath.contains("voice note") ||
+                lowerPath.contains("voicenote") ||
+                lowerPath.contains("/call_rec") ||
+                lowerPath.contains("/recordings") ||
+                lowerPath.contains("/recording") ||
+                lowerPath.contains("/notifications") ||
+                lowerPath.contains("/ringtones") ||
+                lowerPath.contains("/alarms") ||
+                lowerName.startsWith(".")
+        }
     }
 }

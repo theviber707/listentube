@@ -33,6 +33,8 @@ data class MediaTrack(
     val mimeType: String? = null,
     val bitrateBps: Int? = null,
     val fileSizeBytes: Long? = null,
+    val folderPath: String? = null,
+    val folderName: String? = null,
 ) {
     /**
      * Converts this [MediaTrack] into a [ScrobbleTrack] for ListenBrainz reporting via `ScrobbleManager`.

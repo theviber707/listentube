@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -44,21 +47,26 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -82,6 +90,7 @@ import com.listentube.core.result.DomainError
 import com.listentube.domain.media.MediaCollection
 import com.listentube.domain.media.MediaCollectionType
 import com.listentube.domain.media.MediaTrack
+import com.listentube.ui.player.LocalAudioFolder
 import com.listentube.ui.i18n.LocalAppStrings
 import com.listentube.ui.i18n.ProvideAppStrings
 import com.listentube.ui.i18n.localizedMessage
@@ -129,6 +138,7 @@ fun MainScreen(
                 viewModel.closeCollection()
             } else if (uiState.isSearchActive) {
                 viewModel.setSearchActive(false)
+                viewModel.onSearchQueryChanged("")
                 focusManager.clearFocus()
                 keyboardController?.hide()
             }
@@ -147,6 +157,7 @@ fun MainScreen(
                             IconButton(
                                 onClick = {
                                     viewModel.setSearchActive(false)
+                                    viewModel.onSearchQueryChanged("")
                                     focusManager.clearFocus()
                                     keyboardController?.hide()
                                 },
@@ -161,7 +172,7 @@ fun MainScreen(
                             TextField(
                                 value = uiState.searchQuery,
                                 onValueChange = viewModel::onSearchQueryChanged,
-                                placeholder = { Text(strings.searchYtmPlaceholder) },
+                                placeholder = null,
                                 singleLine = true,
                                 colors = TextFieldDefaults.colors(
                                     focusedContainerColor = Color.Transparent,
@@ -254,7 +265,9 @@ fun MainScreen(
                         actions = {
                             IconButton(
                                 onClick = {
-                                    viewModel.selectDestination(MainDestination.EXPLORE)
+                                    if (uiState.currentDestination != MainDestination.LOCAL_LIBRARY) {
+                                        viewModel.selectDestination(MainDestination.EXPLORE)
+                                    }
                                     viewModel.setSearchActive(true)
                                 },
                             ) {
@@ -298,7 +311,7 @@ fun MainScreen(
                         NavigationBarItem(
                             selected = uiState.currentDestination == MainDestination.EXPLORE,
                             onClick = { viewModel.selectDestination(MainDestination.EXPLORE) },
-                            icon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            icon = { Icon(Icons.Default.Language, contentDescription = null) },
                             label = { Text(strings.navYoutubeMusic) },
                         )
                         NavigationBarItem(
@@ -363,14 +376,13 @@ fun MainScreen(
                             },
                             onEnqueueTrack = viewModel::addTrackToQueue,
                             onLoadMore = viewModel::loadMoreSearchResults,
-                            onActivateSearch = { viewModel.setSearchActive(true) },
                         )
                     }
 
                     MainDestination.LOCAL_LIBRARY -> {
                         LocalLibraryTab(
                             uiState = uiState,
-                            onFilterQueryChanged = viewModel::onLocalFilterQueryChanged,
+                            onOpenFolderFilter = { viewModel.setFolderFilterSheetVisible(true) },
                             onRefresh = viewModel::loadLocalLibraryTracks,
                             onPlayTrack = { track ->
                                 viewModel.playTrack(
@@ -396,6 +408,16 @@ fun MainScreen(
                     }
                 }
             }
+        }
+
+        if (uiState.isFolderFilterSheetVisible) {
+            FolderFilterBottomSheet(
+                folders = uiState.discoveredFolders,
+                onToggleFolder = viewModel::toggleFolderInclusion,
+                onSelectAll = { viewModel.setAllFoldersIncluded(true) },
+                onDeselectAll = { viewModel.setAllFoldersIncluded(false) },
+                onDismiss = { viewModel.setFolderFilterSheetVisible(false) },
+            )
         }
 
         if (uiState.isPlayerSheetExpanded && uiState.currentTrack != null) {
@@ -426,7 +448,6 @@ private fun YouTubeExploreTab(
     onPlayTrack: (MediaTrack) -> Unit,
     onEnqueueTrack: (MediaTrack) -> Unit,
     onLoadMore: () -> Unit,
-    onActivateSearch: () -> Unit,
 ) {
     val strings = LocalAppStrings.current
     val focusManager = LocalFocusManager.current
@@ -470,33 +491,7 @@ private fun YouTubeExploreTab(
         uiState.searchResults.isNotEmpty()
 
     if (!hasAnyResults) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(horizontal = 24.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.LibraryMusic,
-                    contentDescription = null,
-                    modifier = Modifier.size(56.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = strings.emptyYtmSearchPrompt,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Button(onClick = onActivateSearch) {
-                    Icon(Icons.Default.Search, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(strings.actionSearch)
-                }
-            }
-        }
+        Box(modifier = Modifier.fillMaxSize())
         return
     }
 
@@ -905,7 +900,7 @@ private fun CollectionDetailContent(
 @Composable
 private fun LocalLibraryTab(
     uiState: PlayerUiState,
-    onFilterQueryChanged: (String) -> Unit,
+    onOpenFolderFilter: () -> Unit,
     onRefresh: () -> Unit,
     onPlayTrack: (MediaTrack) -> Unit,
     onEnqueueTrack: (MediaTrack) -> Unit,
@@ -921,19 +916,33 @@ private fun LocalLibraryTab(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            OutlinedTextField(
-                value = uiState.localFilterQuery,
-                onValueChange = onFilterQueryChanged,
-                placeholder = { Text(strings.filterLocalPlaceholder) },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                modifier = Modifier.weight(1f),
+            FilterChip(
+                selected = uiState.excludedFolderPaths.isNotEmpty(),
+                onClick = onOpenFolderFilter,
+                label = { Text(strings.actionFilterFolders) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
             )
 
-            IconButton(onClick = onRefresh) {
-                Icon(Icons.Default.Refresh, contentDescription = strings.cdRefreshLocalLibrary)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = strings.folderTrackCount(tracks.size),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                IconButton(onClick = onRefresh) {
+                    Icon(Icons.Default.Refresh, contentDescription = strings.cdRefreshLocalLibrary)
+                }
             }
         }
 
@@ -959,7 +968,7 @@ private fun LocalLibraryTab(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(
@@ -978,6 +987,124 @@ private fun LocalLibraryTab(
                     )
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FolderFilterBottomSheet(
+    folders: List<LocalAudioFolder>,
+    onToggleFolder: (String) -> Unit,
+    onSelectAll: () -> Unit,
+    onDeselectAll: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val strings = LocalAppStrings.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .navigationBarsPadding(),
+        ) {
+            Text(
+                text = strings.foldersDialogTitle,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = strings.foldersDialogSubtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onSelectAll,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(strings.actionSelectAll)
+                }
+                OutlinedButton(
+                    onClick = onDeselectAll,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(strings.actionDeselectAll)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider()
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .padding(vertical = 8.dp),
+            ) {
+                items(
+                    items = folders,
+                    key = { it.path },
+                ) { folder ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggleFolder(folder.path) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = folder.isIncluded,
+                            onCheckedChange = { onToggleFolder(folder.path) },
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = if (folder.isIncluded) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.outline
+                            },
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = folder.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = folder.path,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = strings.folderTrackCount(folder.trackCount),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
