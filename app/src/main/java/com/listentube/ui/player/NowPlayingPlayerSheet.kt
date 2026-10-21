@@ -8,15 +8,9 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -66,11 +60,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,8 +86,17 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.listentube.domain.media.MediaTrack
+import com.listentube.service.playback.AudioSpectrumAnalyzer
 import com.listentube.ui.i18n.LocalAppStrings
 import java.util.Locale
+
+private const val PI_F = Math.PI.toFloat()
+private const val TWO_PI = 2f * PI_F
+private const val HALF_PI = PI_F / 2f
+
+/** Per-second exponential smoothing rates for visualizer bars rising / falling. */
+private const val VISUALIZER_ATTACK_RATE = 35f
+private const val VISUALIZER_RELEASE_RATE = 9f
 
 /**
  * Expandable Now Playing bottom sheet supporting both high-resolution audio artwork
@@ -432,8 +438,11 @@ private fun AudioArtworkViewport(
 }
 
 /**
- * Animated audio spectrum visualizer radiating outward from behind the album art card perimeter.
- * Responds smoothly to [isPlaying], shrinking down when playback is paused.
+ * Real-time audio spectrum visualizer radiating outward from behind the album art card perimeter.
+ *
+ * Bar heights are driven by [AudioSpectrumAnalyzer], which analyzes the decoded PCM ExoPlayer is
+ * actually playing. The spectrum is mirrored left/right with bass at the bottom and treble at the
+ * top. When playback pauses the bars fall back to small resting dots and the frame loop stops.
  */
 @Composable
 private fun AudioVisualizerBehindCover(
@@ -443,52 +452,88 @@ private fun AudioVisualizerBehindCover(
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     accentColor: Color = MaterialTheme.colorScheme.tertiary,
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "VisualizerTransition")
-    val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "VisualizerPhase",
+    val levels = remember(barCount) { FloatArray(barCount) }
+    val bands = remember { FloatArray(AudioSpectrumAnalyzer.BAND_COUNT) }
+    // Fractional band index for each bar: bottom (angle π/2) = bass, top = treble, mirrored.
+    val barBandPosition = remember(barCount) {
+        FloatArray(barCount) { i ->
+            val angle = (i.toFloat() / barCount) * TWO_PI
+            val fromBottom = kotlin.math.abs(((angle - HALF_PI + PI_F) % TWO_PI + TWO_PI) % TWO_PI - PI_F)
+            (fromBottom / PI_F) * (AudioSpectrumAnalyzer.BAND_COUNT - 1)
+        }
+    }
+    var frameTick by remember { mutableLongStateOf(0L) }
+
+    val restScale by animateFloatAsState(
+        targetValue = if (isPlaying) 1f else 0.35f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "VisualizerRestScale",
     )
 
-    val activeMultiplier by animateFloatAsState(
-        targetValue = if (isPlaying) 1f else 0.06f,
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
-        label = "VisualizerActiveMultiplier",
-    )
+    LaunchedEffect(isPlaying, barCount) {
+        var lastFrameNanos = 0L
+        while (true) {
+            val settled = withFrameNanos { frameNanos ->
+                val hasAudio = AudioSpectrumAnalyzer.readBands(System.nanoTime(), bands)
+                val dt = if (lastFrameNanos == 0L) {
+                    1f / 60f
+                } else {
+                    ((frameNanos - lastFrameNanos) / 1_000_000_000f).coerceIn(0f, 0.1f)
+                }
+                lastFrameNanos = frameNanos
+
+                var maxLevel = 0f
+                for (i in 0 until barCount) {
+                    val target = if (hasAudio) {
+                        val position = barBandPosition[i]
+                        val low = position.toInt().coerceAtMost(bands.size - 1)
+                        val high = (low + 1).coerceAtMost(bands.size - 1)
+                        val fraction = position - low
+                        bands[low] + (bands[high] - bands[low]) * fraction
+                    } else {
+                        0f
+                    }
+                    val current = levels[i]
+                    // Fast attack so beats punch, slower release so bars fall gracefully.
+                    val rate = if (target > current) VISUALIZER_ATTACK_RATE else VISUALIZER_RELEASE_RATE
+                    val next = current + (target - current) * (1f - kotlin.math.exp(-rate * dt))
+                    levels[i] = next
+                    if (next > maxLevel) maxLevel = next
+                }
+                frameTick = frameNanos
+                !isPlaying && maxLevel < 0.002f
+            }
+            if (settled) break
+        }
+    }
 
     Canvas(modifier = modifier) {
+        // Reading the tick subscribes this draw scope to the frame loop's level updates.
+        @Suppress("UNUSED_VARIABLE")
+        val redrawTick = frameTick
+
         val center = Offset(size.width / 2f, size.height / 2f)
         val coverHalfWidth = (size.width * 0.78f) / 2f
+        val minHeightPx = 3.dp.toPx() * restScale
+        val maxHeightPx = 30.dp.toPx()
 
         for (i in 0 until barCount) {
-            val angle = (i.toFloat() / barCount) * (2f * Math.PI.toFloat())
+            val angle = (i.toFloat() / barCount) * TWO_PI
             val cosA = kotlin.math.cos(angle)
             val sinA = kotlin.math.sin(angle)
             val maxCosSin = maxOf(kotlin.math.abs(cosA), kotlin.math.abs(sinA)).coerceAtLeast(0.001f)
             val baseRadius = (coverHalfWidth / maxCosSin) * 0.94f
 
-            val bass = kotlin.math.sin(phase * 2.2f + i * 0.28f)
-            val mid = kotlin.math.sin(phase * 3.8f - i * 0.42f)
-            val treble = kotlin.math.cos(phase * 5.4f + i * 0.65f)
-            val harmonic = (bass * 0.5f + mid * 0.35f + treble * 0.15f)
-            val normalizedHarmonic = ((harmonic + 1f) / 2f).coerceIn(0f, 1f)
-
-            val minHeightPx = 3.dp.toPx()
-            val maxHeightPx = 26.dp.toPx()
-            val dynamicHeight = (minHeightPx + (maxHeightPx - minHeightPx) * normalizedHarmonic) * activeMultiplier
+            val level = levels[i]
+            val dynamicHeight = minHeightPx + (maxHeightPx - minHeightPx) * level
 
             val startX = center.x + cosA * baseRadius
             val startY = center.y + sinA * baseRadius
             val endX = center.x + cosA * (baseRadius + dynamicHeight)
             val endY = center.y + sinA * (baseRadius + dynamicHeight)
 
-            val t = ((kotlin.math.sin(angle + phase * 0.5f) + 1f) / 2f).coerceIn(0f, 1f)
-            val barColor = lerp(primaryColor, accentColor, t).copy(
-                alpha = (0.55f + 0.45f * normalizedHarmonic) * activeMultiplier.coerceAtLeast(0.2f),
+            val barColor = lerp(primaryColor, accentColor, level).copy(
+                alpha = (0.35f + 0.65f * level) * restScale.coerceAtLeast(0.5f),
             )
 
             drawLine(
