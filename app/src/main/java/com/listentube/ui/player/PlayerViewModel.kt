@@ -19,6 +19,8 @@ import com.listentube.data.listenbrainz.local.QueuedScrobbleEntity
 import com.listentube.data.listenbrainz.model.RateLimitInfo
 import com.listentube.data.listenbrainz.remote.ListenBrainzApiClient
 import com.listentube.data.localmedia.LocalMediaStoreProvider
+import com.listentube.data.lyrics.LyricsRepository
+import com.listentube.domain.lyrics.TrackLyrics
 import com.listentube.domain.media.MediaCollection
 import com.listentube.domain.media.MediaCollectionType
 import com.listentube.domain.media.MediaSourceType
@@ -120,6 +122,12 @@ data class PlayerUiState(
     val hasVideoTrack: Boolean = false,
     val isPlayerSheetExpanded: Boolean = false,
 
+    // Lyrics State
+    val isLyricsActive: Boolean = false,
+    val isLoadingLyrics: Boolean = false,
+    val currentLyrics: TrackLyrics? = null,
+    val lyricsError: String? = null,
+
     // ListenBrainz & Offline Scrobble Queue State
     val scrobbleSession: ScrobbleSessionState = ScrobbleSessionState(),
     val rateLimitInfo: RateLimitInfo = RateLimitInfo(),
@@ -220,6 +228,7 @@ class PlayerViewModel(
     private val listenBrainzApiClient: ListenBrainzApiClient,
     private val scrobbleManager: ScrobbleManager,
     private val preferencesStore: ScrobblePreferencesStore = InMemoryScrobblePreferencesStore(),
+    private val lyricsRepository: LyricsRepository? = null,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlayerUiState())
@@ -688,6 +697,9 @@ class PlayerViewModel(
                 activeError = null,
             )
         }
+        if (_uiState.value.isLyricsActive) {
+            loadLyricsForTrack(track)
+        }
 
         val player = _connectedPlayer.value
         if (player != null) {
@@ -797,6 +809,63 @@ class PlayerViewModel(
                 PlayerRenderMode.AUDIO_ARTWORK
             }
             current.copy(renderMode = next)
+        }
+    }
+
+    private var lyricsJob: Job? = null
+
+    /**
+     * Toggles visibility of lyrics. When activated, immediately triggers a lyrics lookup
+     * for the currently playing track if not already fetched.
+     */
+    fun toggleLyrics() {
+        val nextActive = !_uiState.value.isLyricsActive
+        _uiState.update { it.copy(isLyricsActive = nextActive) }
+        if (nextActive) {
+            loadLyricsForCurrentTrack()
+        }
+    }
+
+    /**
+     * Retries fetching lyrics for the active track, bypassing memory cache if previous attempt failed.
+     */
+    fun retryLyrics() {
+        loadLyricsForCurrentTrack(force = true)
+    }
+
+    private fun loadLyricsForCurrentTrack(force: Boolean = false) {
+        val track = _uiState.value.currentTrack ?: return
+        loadLyricsForTrack(track, force)
+    }
+
+    private fun loadLyricsForTrack(track: MediaTrack, force: Boolean = false) {
+        val repo = lyricsRepository ?: return
+        lyricsJob?.cancel()
+        if (!force && _uiState.value.currentLyrics?.trackId == track.id) return
+
+        _uiState.update { it.copy(isLoadingLyrics = true, lyricsError = null) }
+        lyricsJob = viewModelScope.launch {
+            when (val result = repo.getLyrics(track)) {
+                is AppResult.Success -> {
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoadingLyrics = false,
+                            currentLyrics = result.data,
+                            lyricsError = null,
+                        )
+                    }
+                }
+
+                is AppResult.Failure -> {
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoadingLyrics = false,
+                            currentLyrics = null,
+                            lyricsError = result.error.message,
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -1034,6 +1103,7 @@ class PlayerViewModel(
         val buffered = player.bufferedPosition.coerceAtLeast(position)
         val hasVideo = player.currentTracks.containsType(C.TRACK_TYPE_VIDEO)
 
+        val previousTrackId = _uiState.value.currentTrack?.id
         _uiState.update { state ->
             val resolvedTrack = mediaItem?.let { item ->
                 state.playbackQueue.firstOrNull { it.id == item.mediaId }
@@ -1052,6 +1122,10 @@ class PlayerViewModel(
                 shuffleModeEnabled = player.shuffleModeEnabled,
                 hasVideoTrack = hasVideo,
             )
+        }
+        val currentTrack = _uiState.value.currentTrack
+        if (currentTrack != null && currentTrack.id != previousTrackId && _uiState.value.isLyricsActive) {
+            loadLyricsForTrack(currentTrack)
         }
     }
 

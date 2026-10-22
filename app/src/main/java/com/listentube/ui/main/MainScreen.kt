@@ -433,6 +433,8 @@ fun MainScreen(
                 onCycleRepeat = viewModel::cycleRepeatMode,
                 onSelectRenderMode = viewModel::setRenderMode,
                 onSelectQueueIndex = viewModel::skipToQueueIndex,
+                onToggleLyrics = viewModel::toggleLyrics,
+                onRetryLyrics = viewModel::retryLyrics,
             )
         }
     }

@@ -23,6 +23,8 @@ import com.listentube.data.innertube.model.InnertubeSearchResponse
 import com.listentube.data.innertube.model.MusicResponsiveListItemRenderer
 import com.listentube.data.innertube.model.MusicShelfItem
 import com.listentube.data.innertube.model.MusicShelfRenderer
+import com.listentube.domain.lyrics.LrcParser
+import com.listentube.domain.lyrics.TrackLyrics
 import com.listentube.domain.media.MediaCollection
 import com.listentube.domain.media.MediaCollectionType
 import com.listentube.domain.media.MediaProvider
@@ -777,6 +779,85 @@ class YouTubeMusicProvider(
         return seconds * 1_000L
     }
 
+    /**
+     * Attempts to fetch lyrics for [trackId] from YouTube Music using Innertube's
+     * `/youtubei/v1/next` to discover the lyrics browseId, followed by `/youtubei/v1/browse`.
+     */
+    suspend fun getLyrics(trackId: String): AppResult<TrackLyrics?> {
+        val nextRequest = com.listentube.data.innertube.model.InnertubeNextRequest(
+            context = InnertubeContext.webRemix(hl = hl, gl = gl, visitorData = visitorData),
+            videoId = trackId,
+        )
+        val nextResult = postInnertube<com.listentube.data.innertube.model.InnertubeNextRequest, com.listentube.data.innertube.model.InnertubeNextResponse>(
+            endpointUrl = "${ytmBaseUrl.trimEnd('/')}$ENDPOINT_NEXT",
+            originHeader = DEFAULT_YTM_BASE_URL,
+            userAgent = InnertubeContext.WEB_REMIX_USER_AGENT,
+            requestBody = nextRequest,
+        )
+
+        val nextResponse = when (nextResult) {
+            is AppResult.Success -> nextResult.data
+            is AppResult.Failure -> return nextResult
+        }
+
+        val tabs = nextResponse.contents
+            ?.singleColumnMusicWatchNextResultsRenderer
+            ?.tabbedRenderer
+            ?.watchNextTabbedResultsRenderer
+            ?.tabs ?: emptyList()
+
+        val lyricsTab = tabs.firstOrNull { tab ->
+            val tr = tab.tabRenderer ?: return@firstOrNull false
+            if (tr.unselectable == true) return@firstOrNull false
+            val browseId = tr.endpoint?.browseEndpoint?.browseId
+            browseId != null && (browseId.startsWith("MPLY") || tr.title?.equals("Lyrics", ignoreCase = true) == true)
+        }?.tabRenderer
+
+        val browseId = lyricsTab?.endpoint?.browseEndpoint?.browseId ?: return AppResult.Success(null)
+
+        val browseRequest = InnertubeBrowseRequest(
+            context = InnertubeContext.webRemix(hl = hl, gl = gl, visitorData = visitorData),
+            browseId = browseId,
+        )
+        val browseResult = postInnertube<InnertubeBrowseRequest, InnertubeBrowseResponse>(
+            endpointUrl = "${ytmBaseUrl.trimEnd('/')}$ENDPOINT_BROWSE",
+            originHeader = DEFAULT_YTM_BASE_URL,
+            userAgent = InnertubeContext.WEB_REMIX_USER_AGENT,
+            requestBody = browseRequest,
+        )
+
+        val browseResponse = when (browseResult) {
+            is AppResult.Success -> browseResult.data
+            is AppResult.Failure -> return browseResult
+        }
+
+        val contents = browseResponse.contents
+            ?.sectionListRenderer
+            ?.contents ?: emptyList()
+
+        for (item in contents) {
+            val shelf = item.musicDescriptionShelfRenderer ?: continue
+            val text = shelf.description?.joinedText()?.trim()
+            if (!text.isNullOrEmpty()) {
+                val lines = LrcParser.parsePlain(text)
+                if (lines.isNotEmpty()) {
+                    val footer = shelf.footer?.joinedText()?.trim()
+                    val source = if (!footer.isNullOrEmpty()) footer else "YouTube Music"
+                    return AppResult.Success(
+                        TrackLyrics(
+                            trackId = trackId,
+                            lines = lines,
+                            source = source,
+                            isSynced = false,
+                        ),
+                    )
+                }
+            }
+        }
+
+        return AppResult.Success(null)
+    }
+
     private fun extractExpireEpochSeconds(streamUrl: String): Long? {
         val query = streamUrl.substringAfter('?', missingDelimiterValue = "")
         if (query.isEmpty()) return null
@@ -797,6 +878,7 @@ class YouTubeMusicProvider(
         const val ENDPOINT_SEARCH = "/youtubei/v1/search"
         const val ENDPOINT_PLAYER = "/youtubei/v1/player"
         const val ENDPOINT_BROWSE = "/youtubei/v1/browse"
+        const val ENDPOINT_NEXT = "/youtubei/v1/next"
 
         private const val UNKNOWN_ARTIST = "Unknown Artist"
         private const val PLAYLIST_BROWSE_PREFIX = "VL"

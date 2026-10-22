@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
                     listenBrainzApiClient = app.listenBrainzApiClient,
                     scrobbleManager = app.scrobbleManager,
                     preferencesStore = app.preferencesStore,
+                    lyricsRepository = app.lyricsRepository,
                 ) as T
             }
         }

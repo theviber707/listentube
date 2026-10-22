@@ -500,6 +500,8 @@ data class SectionContent(
     val musicShelfRenderer: MusicShelfRenderer? = null,
     @SerialName("musicPlaylistShelfRenderer")
     val musicPlaylistShelfRenderer: MusicShelfRenderer? = null,
+    @SerialName("musicDescriptionShelfRenderer")
+    val musicDescriptionShelfRenderer: MusicDescriptionShelfRenderer? = null,
 )
 
 @Serializable
@@ -713,6 +715,8 @@ data class BrowseContents(
     val twoColumnBrowseResultsRenderer: TwoColumnBrowseResultsRenderer? = null,
     @SerialName("singleColumnBrowseResultsRenderer")
     val singleColumnBrowseResultsRenderer: TabbedSearchResultsRenderer? = null,
+    @SerialName("sectionListRenderer")
+    val sectionListRenderer: SectionListRenderer? = null,
 )
 
 @Serializable
@@ -734,3 +738,70 @@ data class AppendContinuationItemsAction(
     @SerialName("continuationItems")
     val continuationItems: List<MusicShelfItem> = emptyList(),
 )
+
+@Serializable
+data class MusicDescriptionShelfRenderer(
+    @SerialName("description")
+    val description: FormattedText? = null,
+    @SerialName("footer")
+    val footer: FormattedText? = null,
+)
+
+// =============================================================================
+// Innertube `/youtubei/v1/next` Models
+// =============================================================================
+
+@Serializable
+data class InnertubeNextRequest(
+    @SerialName("context")
+    val context: InnertubeContext,
+    @SerialName("videoId")
+    val videoId: String,
+)
+
+@Serializable
+data class InnertubeNextResponse(
+    @SerialName("contents")
+    val contents: NextContents? = null,
+)
+
+@Serializable
+data class NextContents(
+    @SerialName("singleColumnMusicWatchNextResultsRenderer")
+    val singleColumnMusicWatchNextResultsRenderer: SingleColumnMusicWatchNextResultsRenderer? = null,
+)
+
+@Serializable
+data class SingleColumnMusicWatchNextResultsRenderer(
+    @SerialName("tabbedRenderer")
+    val tabbedRenderer: WatchNextTabbedRenderer? = null,
+)
+
+@Serializable
+data class WatchNextTabbedRenderer(
+    @SerialName("watchNextTabbedResultsRenderer")
+    val watchNextTabbedResultsRenderer: WatchNextTabbedResultsRenderer? = null,
+)
+
+@Serializable
+data class WatchNextTabbedResultsRenderer(
+    @SerialName("tabs")
+    val tabs: List<WatchNextTab> = emptyList(),
+)
+
+@Serializable
+data class WatchNextTab(
+    @SerialName("tabRenderer")
+    val tabRenderer: WatchNextTabRenderer? = null,
+)
+
+@Serializable
+data class WatchNextTabRenderer(
+    @SerialName("title")
+    val title: String? = null,
+    @SerialName("endpoint")
+    val endpoint: NavigationEndpoint? = null,
+    @SerialName("unselectable")
+    val unselectable: Boolean? = null,
+)
+

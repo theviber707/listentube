@@ -8,6 +8,8 @@ import android.app.Application
 import androidx.room.Room
 import com.listentube.data.innertube.YouTubeMusicProvider
 import com.listentube.data.innertube.cipher.CipherDecryptor
+import com.listentube.data.lyrics.LrclibLyricsProvider
+import com.listentube.data.lyrics.LyricsRepository
 import com.listentube.data.listenbrainz.local.ScrobbleDatabase
 import com.listentube.data.listenbrainz.remote.ListenBrainzApiClient
 import com.listentube.data.localmedia.LocalMediaStoreProvider
@@ -37,6 +39,9 @@ class ListenTubeApp : Application() {
         private set
 
     lateinit var localMediaStoreProvider: LocalMediaStoreProvider
+        private set
+
+    lateinit var lyricsRepository: LyricsRepository
         private set
 
     override fun onCreate() {
@@ -74,6 +79,15 @@ class ListenTubeApp : Application() {
 
         localMediaStoreProvider = LocalMediaStoreProvider(
             contentResolver = applicationContext.contentResolver,
+        )
+
+        val lrclibProvider = LrclibLyricsProvider(
+            httpClient = httpClient,
+            json = json,
+        )
+        lyricsRepository = LyricsRepository(
+            lrclibProvider = lrclibProvider,
+            youTubeMusicProvider = youTubeMusicProvider,
         )
 
         MusicPlaybackService.dependencyProvider = {
