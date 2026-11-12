@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
  */
 enum class PlayerRenderMode {
     AUDIO_ARTWORK,
+    VINYL,
     VIDEO_SURFACE,
 }
 
@@ -803,10 +804,10 @@ class PlayerViewModel(
 
     fun toggleRenderMode() {
         _uiState.update { current ->
-            val next = if (current.renderMode == PlayerRenderMode.AUDIO_ARTWORK) {
-                PlayerRenderMode.VIDEO_SURFACE
-            } else {
-                PlayerRenderMode.AUDIO_ARTWORK
+            val next = when (current.renderMode) {
+                PlayerRenderMode.AUDIO_ARTWORK -> PlayerRenderMode.VINYL
+                PlayerRenderMode.VINYL -> PlayerRenderMode.VIDEO_SURFACE
+                PlayerRenderMode.VIDEO_SURFACE -> PlayerRenderMode.AUDIO_ARTWORK
             }
             current.copy(renderMode = next)
         }

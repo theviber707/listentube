@@ -24,6 +24,7 @@ okhttp = "4.12.0"
 
 # AndroidX Core, Lifecycle & Background
 coreKtx = "1.15.0"
+palette = "1.0.0"
 lifecycle = "2.8.7"
 activityCompose = "1.9.3"
 navigationCompose = "2.8.5"
@@ -84,6 +85,7 @@ okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-i
 
 # AndroidX Core & Lifecycle
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-palette = { group = "androidx.palette", name = "palette-ktx", version.ref = "palette" }
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashScreen" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }

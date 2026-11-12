@@ -41,6 +41,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.MusicNote
@@ -240,6 +241,27 @@ fun NowPlayingSheetContent(
                                 )
                             } else {
                                 AudioArtworkViewport(
+                                    track = track,
+                                    isPlaying = uiState.isPlaying,
+                                )
+                            }
+                        }
+
+                        PlayerRenderMode.VINYL -> {
+                            if (isLyricsActive) {
+                                LyricsViewport(
+                                    lyrics = uiState.currentLyrics,
+                                    isLoading = uiState.isLoadingLyrics,
+                                    lyricsError = uiState.lyricsError,
+                                    currentPositionMs = uiState.currentPositionMs,
+                                    onSeekTo = onSeekTo,
+                                    onRetry = onRetryLyrics,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(1f),
+                                )
+                            } else {
+                                VinylArtworkViewport(
                                     track = track,
                                     isPlaying = uiState.isPlaying,
                                 )
@@ -472,6 +494,18 @@ private fun RenderModeToggleBar(
             selected = currentMode == PlayerRenderMode.AUDIO_ARTWORK,
             onClick = { onSelectMode(PlayerRenderMode.AUDIO_ARTWORK) },
             label = { Text(strings.renderModeAudioArt) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Image,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        )
+        FilterChip(
+            selected = currentMode == PlayerRenderMode.VINYL,
+            onClick = { onSelectMode(PlayerRenderMode.VINYL) },
+            label = { Text(strings.renderModeVinyl) },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Default.Album,
@@ -789,12 +823,13 @@ private fun PlainLyricsList(
  * top. When playback pauses the bars fall back to small resting dots and the frame loop stops.
  */
 @Composable
-private fun AudioVisualizerBehindCover(
+internal fun AudioVisualizerBehindCover(
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
     barCount: Int = 48,
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     accentColor: Color = MaterialTheme.colorScheme.tertiary,
+    isCircular: Boolean = false,
 ) {
     val levels = remember(barCount) { FloatArray(barCount) }
     val bands = remember { FloatArray(AudioSpectrumAnalyzer.BAND_COUNT) }
@@ -865,8 +900,12 @@ private fun AudioVisualizerBehindCover(
             val angle = (i.toFloat() / barCount) * TWO_PI
             val cosA = kotlin.math.cos(angle)
             val sinA = kotlin.math.sin(angle)
-            val maxCosSin = maxOf(kotlin.math.abs(cosA), kotlin.math.abs(sinA)).coerceAtLeast(0.001f)
-            val baseRadius = (coverHalfWidth / maxCosSin) * 0.94f
+            val baseRadius = if (isCircular) {
+                coverHalfWidth * 1.02f
+            } else {
+                val maxCosSin = maxOf(kotlin.math.abs(cosA), kotlin.math.abs(sinA)).coerceAtLeast(0.001f)
+                (coverHalfWidth / maxCosSin) * 0.94f
+            }
 
             val level = levels[i]
             val dynamicHeight = minHeightPx + (maxHeightPx - minHeightPx) * level
