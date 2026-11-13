@@ -14,14 +14,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -32,6 +27,9 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.listentube.service.playback.MusicPlaybackService
 import com.listentube.ui.main.MainScreen
 import com.listentube.ui.player.PlayerViewModel
+import com.listentube.ui.theme.ListenTubeTheme
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /**
  * Primary entry-point Activity that binds a Media3 [MediaController] to [MusicPlaybackService],
@@ -72,7 +70,13 @@ class MainActivity : ComponentActivity() {
         requestAudioPermissionsIfNeeded()
 
         setContent {
-            ListenTubeTheme {
+            val artworkUrl by remember(playerViewModel) {
+                playerViewModel.uiState
+                    .map { it.currentTrack?.artworkUrl }
+                    .distinctUntilChanged()
+            }.collectAsState(initial = null)
+
+            ListenTubeTheme(artworkUrl = artworkUrl) {
                 MainScreen(viewModel = playerViewModel)
             }
         }
@@ -136,24 +140,4 @@ class MainActivity : ComponentActivity() {
             permissionLauncher.launch(permissionsToRequest.toTypedArray())
         }
     }
-}
-
-@Composable
-fun ListenTubeTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    content: @Composable () -> Unit,
-) {
-    val context = LocalContext.current
-    val colorScheme = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> darkColorScheme()
-        else -> lightColorScheme()
-    }
-
-    MaterialTheme(
-        colorScheme = colorScheme,
-        content = content,
-    )
 }

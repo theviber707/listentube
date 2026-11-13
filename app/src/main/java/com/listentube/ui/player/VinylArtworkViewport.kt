@@ -36,19 +36,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.ColorUtils
-import androidx.palette.graphics.Palette
-import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
-import coil3.request.SuccessResult
-import coil3.request.allowHardware
-import coil3.toBitmap
 import com.listentube.domain.media.MediaTrack
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.listentube.ui.theme.rememberArtworkSeedColor
+import com.listentube.ui.theme.rgbToHsl
 
 /**
  * Dynamic Material You color scheme extracted from track cover art.
@@ -72,85 +64,37 @@ fun rememberVinylPalette(
     fallbackOnPrimary: Color = MaterialTheme.colorScheme.onPrimary,
     fallbackAccent: Color = MaterialTheme.colorScheme.tertiary,
 ): VinylPalette {
-    val context = LocalContext.current
-    var palette by remember(artworkUrl, isDarkTheme) {
-        mutableStateOf(
+    val seedRgb = rememberArtworkSeedColor(artworkUrl = artworkUrl)
+    return remember(seedRgb, isDarkTheme, fallbackPrimary, fallbackOnPrimary, fallbackAccent) {
+        if (seedRgb == null) {
             VinylPalette(
                 primary = fallbackPrimary,
                 onPrimary = fallbackOnPrimary,
                 accent = fallbackAccent,
-            ),
-        )
-    }
+            )
+        } else {
+            val (hue, sat, _) = rgbToHsl(seedRgb)
+            val isNeutral = sat < 0.08f
+            val primSat = if (isNeutral) sat.coerceAtMost(0.06f) else sat.coerceIn(0.45f, 0.90f)
+            val onPrimSat = if (isNeutral) sat.coerceAtMost(0.05f) else sat.coerceAtMost(0.35f)
+            val accSat = if (isNeutral) sat.coerceAtMost(0.06f) else sat.coerceIn(0.40f, 0.85f)
+            val accHue = (hue + 45f) % 360f
 
-    LaunchedEffect(artworkUrl, isDarkTheme) {
-        if (artworkUrl.isNullOrBlank()) {
-            palette = VinylPalette(fallbackPrimary, fallbackOnPrimary, fallbackAccent)
-            return@LaunchedEffect
-        }
-
-        withContext(Dispatchers.IO) {
-            try {
-                val imageLoader = SingletonImageLoader.get(context)
-                val request = ImageRequest.Builder(context)
-                    .data(artworkUrl)
-                    .size(128, 128)
-                    .allowHardware(false)
-                    .build()
-                val result = imageLoader.execute(request)
-                if (result is SuccessResult) {
-                    val bitmap = try {
-                        result.image.toBitmap()
-                    } catch (_: Throwable) {
-                        (result.image as? coil3.BitmapImage)?.bitmap
-                    }
-
-                    if (bitmap != null) {
-                        val p = Palette.from(bitmap).generate()
-                        val seedRgb = p.dominantSwatch?.rgb
-                            ?: p.vibrantSwatch?.rgb
-                            ?: p.mutedSwatch?.rgb
-                            ?: p.swatches.maxByOrNull { it.population }?.rgb
-
-                        if (seedRgb != null) {
-                            val hsl = FloatArray(3)
-                            ColorUtils.colorToHSL(seedRgb, hsl)
-
-                            val (primaryColor, onPrimaryColor, accentColor) = if (isDarkTheme) {
-                                // Material 3 Dark theme tonal roles: Primary (Tone ~75), OnPrimary (Tone ~12, near black)
-                                val primHsl = floatArrayOf(hsl[0], hsl[1].coerceIn(0.45f, 0.90f), 0.72f)
-                                val onPrimHsl = floatArrayOf(hsl[0], hsl[1].coerceAtMost(0.35f), 0.12f)
-                                val accHsl = floatArrayOf((hsl[0] + 45f) % 360f, hsl[1].coerceIn(0.40f, 0.85f), 0.68f)
-                                Triple(
-                                    Color(ColorUtils.HSLToColor(primHsl)),
-                                    Color(ColorUtils.HSLToColor(onPrimHsl)),
-                                    Color(ColorUtils.HSLToColor(accHsl)),
-                                )
-                            } else {
-                                // Material 3 Light theme tonal roles: Primary (Tone ~38), OnPrimary (Tone ~97, near white)
-                                val primHsl = floatArrayOf(hsl[0], hsl[1].coerceIn(0.50f, 0.95f), 0.38f)
-                                val onPrimHsl = floatArrayOf(hsl[0], hsl[1].coerceAtMost(0.20f), 0.97f)
-                                val accHsl = floatArrayOf((hsl[0] + 45f) % 360f, hsl[1].coerceIn(0.45f, 0.85f), 0.45f)
-                                Triple(
-                                    Color(ColorUtils.HSLToColor(primHsl)),
-                                    Color(ColorUtils.HSLToColor(onPrimHsl)),
-                                    Color(ColorUtils.HSLToColor(accHsl)),
-                                )
-                            }
-
-                            withContext(Dispatchers.Main) {
-                                palette = VinylPalette(primaryColor, onPrimaryColor, accentColor)
-                            }
-                        }
-                    }
-                }
-            } catch (_: Exception) {
-                // Keep fallback on error
+            if (isDarkTheme) {
+                VinylPalette(
+                    primary = Color.hsl(hue, primSat, 0.72f),
+                    onPrimary = Color.hsl(hue, onPrimSat, 0.12f),
+                    accent = Color.hsl(accHue, accSat, 0.68f),
+                )
+            } else {
+                VinylPalette(
+                    primary = Color.hsl(hue, primSat, 0.38f),
+                    onPrimary = Color.hsl(hue, onPrimSat.coerceAtMost(0.20f), 0.97f),
+                    accent = Color.hsl(accHue, accSat, 0.45f),
+                )
             }
         }
     }
-
-    return palette
 }
 
 /**
